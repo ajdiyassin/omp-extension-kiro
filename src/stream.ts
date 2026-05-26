@@ -225,8 +225,9 @@ export function streamKiro(
       if (!accessToken) throw new Error("Kiro credentials not set. Run /login kiro or install kiro-cli.");
       const endpoint = model.baseUrl || "https://q.us-east-1.amazonaws.com/generateAssistantResponse";
 
-      const optionProfileArn = (options as unknown as { credentials?: { profileArn?: string }; profileArn?: string })
-        ?.credentials?.profileArn || (options as unknown as { profileArn?: string })?.profileArn;
+      const optionProfileArn =
+        (options as unknown as { credentials?: { profileArn?: string }; profileArn?: string })?.credentials
+          ?.profileArn || (options as unknown as { profileArn?: string })?.profileArn;
       const cliCreds = getKiroCliCredentials() ?? getKiroCliCredentialsAllowExpired();
       const cliProfileArn = cliCreds?.access === accessToken ? cliCreds.profileArn : undefined;
       let profileArn = optionProfileArn || cliProfileArn || (await resolveProfileArn(accessToken, endpoint));

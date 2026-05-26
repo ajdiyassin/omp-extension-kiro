@@ -1,8 +1,8 @@
 // Feature 2: Model Definitions
 
-import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 const CACHE_PATH = join(homedir(), ".kiro-models-cache.json");
 
@@ -32,7 +32,7 @@ export function loadCachedModelIds(): void {
     for (const regionModels of Object.values(data)) {
       if (Array.isArray(regionModels)) {
         for (const m of regionModels) {
-          if (m && m.id) {
+          if (m?.id) {
             const kiroId = m.id.replace(/(\d)-(\d)/g, "$1.$2");
             KIRO_MODEL_IDS.add(kiroId);
           }
@@ -74,11 +74,7 @@ export function isCacheStale(region: string): boolean {
   }
 }
 
-export async function updateKiroModelsCache(
-  accessToken: string,
-  region: string,
-  profileArn?: string,
-): Promise<void> {
+export async function updateKiroModelsCache(accessToken: string, region: string, profileArn?: string): Promise<void> {
   try {
     const qHost = `https://q.${region}.amazonaws.com`;
     const url = new URL(`${qHost}/ListAvailableModels`);
@@ -112,7 +108,8 @@ export async function updateKiroModelsCache(
       }
 
       const isClaude = piId.startsWith("claude");
-      const isReasoning = piId.includes("opus") || piId.includes("sonnet") || piId.includes("coder") || piId.includes("deepseek");
+      const isReasoning =
+        piId.includes("opus") || piId.includes("sonnet") || piId.includes("coder") || piId.includes("deepseek");
       const name = piId
         .split("-")
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -161,7 +158,7 @@ export async function updateKiroModelsCache(
 
     cachedIdsLoaded = false;
     loadCachedModelIds();
-  } catch (error) {
+  } catch (_error) {
     // Ignore fetch/cache errors
   }
 }

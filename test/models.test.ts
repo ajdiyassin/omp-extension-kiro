@@ -95,9 +95,7 @@ describe("Feature 2: Model Definitions", () => {
     });
 
     it("non-Claude models (except auto) support text only", () => {
-      const textOnlyModels = kiroModels.filter(
-        (m) => !m.id.startsWith("claude-") && m.id !== "auto",
-      );
+      const textOnlyModels = kiroModels.filter((m) => !m.id.startsWith("claude-") && m.id !== "auto");
       expect(textOnlyModels.every((m) => m.input.includes("text") && !m.input.includes("image"))).toBe(true);
     });
 
@@ -111,9 +109,7 @@ describe("Feature 2: Model Definitions", () => {
     });
 
     it("non-Claude models (except auto) have 8K max tokens", () => {
-      const nonClaudeModels = kiroModels.filter(
-        (m) => !m.id.startsWith("claude-") && m.id !== "auto",
-      );
+      const nonClaudeModels = kiroModels.filter((m) => !m.id.startsWith("claude-") && m.id !== "auto");
       expect(nonClaudeModels.every((m) => m.maxTokens === 8192)).toBe(true);
     });
   });
@@ -131,7 +127,9 @@ describe("Feature 2: Model Definitions", () => {
     function supportedLevels(model: (typeof kiroModels)[number]): Level[] {
       if (!model.reasoning) return ["off"];
       return EXTENDED_LEVELS.filter((level) => {
-        const mapped = (model as { thinkingLevelMap?: Partial<Record<Level, string | null>> }).thinkingLevelMap?.[level];
+        const mapped = (model as { thinkingLevelMap?: Partial<Record<Level, string | null>> }).thinkingLevelMap?.[
+          level
+        ];
         if (mapped === null) return false;
         if (level === "xhigh") return mapped !== undefined;
         return true;
@@ -155,13 +153,7 @@ describe("Feature 2: Model Definitions", () => {
 
     it("other reasoning models offer up to high (no xhigh)", () => {
       for (const m of kiroModels.filter((x) => x.reasoning && !XHIGH_MODELS.includes(x.id))) {
-        expect(supportedLevels(m), `${m.id} supported levels`).toEqual([
-          "off",
-          "minimal",
-          "low",
-          "medium",
-          "high",
-        ]);
+        expect(supportedLevels(m), `${m.id} supported levels`).toEqual(["off", "minimal", "low", "medium", "high"]);
       }
     });
 
