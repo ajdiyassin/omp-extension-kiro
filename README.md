@@ -1,114 +1,135 @@
-# pi-provider-kiro
+# omp-provider-kiro
 
-A [pi](https://shittycodingagent.ai/) provider extension that connects pi to the **Kiro API** (AWS CodeWhisperer/Q), exposing **12 kiro-cli-verified models** through one provider surface.
+OMP-native provider extension for the [Kiro](https://kiro.dev) API — 13 models including Claude Opus/Sonnet/Haiku, DeepSeek, MiniMax, GLM, and Qwen via AWS CodeWhisperer/Q.
 
-## Why this exists
+Fork of [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro), converted to a self-contained OMP extension with no runtime dependency on `@earendil-works/*` or OMP TUI internals.
 
-Kiro gives you a strong free model menu, but pi needs a provider that speaks Kiro's auth, model catalog, and streaming protocol cleanly. `pi-provider-kiro` handles that bridge, including:
+## Requirements
 
-- AWS Builder ID, IAM Identity Center, Google, and GitHub login flows
-- shared credentials from an existing `kiro-cli` session when available
-- reasoning-aware streaming
-- region-aware model filtering so pi only shows models your Kiro region can actually use
+- **OMP** ≥ 15.11.0
+- **Kiro CLI** (recommended for credential reuse) — [install guide](https://kiro.dev/docs/cli/)
 
-## Quick start
+## Install
 
-Install the provider:
+From the cloned repo directory:
 
-```bash
-pi install npm:pi-provider-kiro
+```powershell
+bun install
+bun run build
+omp plugin install .
 ```
 
-Or install it globally with npm:
+Or from a parent directory:
 
-```bash
-npm install -g pi-provider-kiro
+```powershell
+omp plugin install .\omp-provider-kiro
 ```
 
-Then log in from pi:
+Or via tarball:
+
+```powershell
+npm pack
+omp plugin install .\omp-provider-kiro-0.1.0.tgz
+```
+
+## Authentication
+
+### Recommended: Kiro CLI credential reuse
+
+If Kiro CLI is installed and logged in, OMP automatically reuses credentials — no `/login` needed.
+
+```powershell
+kiro-cli whoami
+omp
+```
+
+### Manual login
 
 ```text
 /login kiro
 ```
 
-The login flow supports:
-- **AWS Builder ID** — native device-code flow, works well over SSH/remotes
-- **Your organization** — IAM Identity Center start URL
-- **Google** — social login via `kiro-cli`
-- **GitHub** — social login via `kiro-cli`
+Prompt: `Paste IAM Identity Center URL, or blank for Builder ID`
 
-If you already use [kiro-cli](https://kiro.dev), the provider can reuse those credentials instead of forcing a second login.
+- Blank → AWS Builder ID device-code flow
+- URL → IAM Identity Center with auto-region detection
 
-## Models
+### Supported auth methods
 
-| Family | Models | Context | Reasoning |
-|--------|--------|---------|-----------|
-| Claude Opus | `claude-opus-4-7`, `claude-opus-4-6` | 1M | ✓ |
-| Claude Sonnet 4.6 | `claude-sonnet-4-6` | 1M | ✓ |
-| Claude Sonnet 4.5 | `claude-sonnet-4-5` | 200K | ✓ |
-| Claude Sonnet 4 | `claude-sonnet-4` | 200K | ✓ |
-| Claude Haiku 4.5 | `claude-haiku-4-5` | 200K | ✗ |
-| DeepSeek 3.2 | `deepseek-3-2` | 164K | ✓ |
-| MiniMax | `minimax-m2-1`, `minimax-m2-5` | 196K | ✗ |
-| GLM 5 | `glm-5` | 200K | ✓ |
-| Qwen3 Coder | `qwen3-coder-next` | 256K | ✓ |
-| Auto | `auto` | 1M | ✓ |
-
-All listed models are free to use through Kiro.
+- AWS Builder ID (device code)
+- IAM Identity Center / SSO (device code with region probing)
+- Google / GitHub (via `kiro-cli login --license free`)
 
 ## Usage
 
-Once logged in, select any Kiro model in pi:
-
 ```text
-/model claude-sonnet-4-6
+/model kiro/auto
 ```
 
-Or let Kiro pick automatically:
+Available models: `claude-opus-4-8`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`, `deepseek-3-2`, `minimax-m2-5`, `minimax-m2-1`, `glm-5`, `qwen3-coder-next`, `auto`
 
-```text
-/model auto
-```
+## Windows Kiro CLI DB paths
 
-Reasoning is automatically enabled for supported models. Use `/reasoning` to adjust the thinking budget.
+The extension checks both locations:
 
-## Retry Behavior
+1. `%LOCALAPPDATA%\Kiro-Cli\data.sqlite3` (newer installations)
+2. `%APPDATA%\kiro-cli\data.sqlite3` (older installations)
 
-Generic transient retries such as HTTP `429` and `5xx` are handled by `pi-coding-agent` at the session layer.
-
-This provider only keeps local recovery for Kiro-specific cases:
-- `403` auth races, where it can refresh credentials from `kiro-cli`
-- first-token / stalled-stream recovery
-- empty-stream retries
-- non-retryable Kiro body markers like `MONTHLY_REQUEST_COUNT` and `INSUFFICIENT_MODEL_CAPACITY`
-
-## Development
-
-```bash
-npm run build       # Compile TypeScript
-npm run check       # Type check (no emit)
-npm test            # Run the Vitest suite
-npm run test:watch  # Watch mode
-```
+No symlinks or junctions required.
 
 ## Architecture
 
-The extension is organized as one feature per file:
+- **Self-contained bundle** — `dist/index.js` bundles all runtime deps. Only `node:*` imports at runtime.
+- **Type-only OMP imports** — `@oh-my-pi/pi-ai` and `@oh-my-pi/pi-coding-agent` are dev-only.
+- **No TUI dependency** — Login uses OMP's built-in prompt mechanism.
 
-```
-src/
-├── index.ts            # Extension registration
-├── models.ts           # 12 model definitions + ID resolution
-├── oauth.ts            # Multi-provider auth (Builder ID / Google / GitHub)
-├── kiro-cli.ts         # kiro-cli credential sharing
-├── transform.ts        # Message format conversion
-├── history.ts          # Conversation history management
-├── thinking-parser.ts  # Streaming <thinking> tag parser
-├── event-parser.ts     # Kiro stream event parser
-└── stream.ts           # Main streaming orchestrator
+## Development
+
+```powershell
+bun install
+bun run check     # TypeScript type check
+bun run test      # Run all tests (297 tests)
+bun run build     # Build dist/index.js
 ```
 
-See [AGENTS.md](AGENTS.md) for detailed development guidance and [.agents/summary/](/.agents/summary/index.md) for full architecture documentation.
+## Troubleshooting
+
+### Check if the extension loaded
+
+```powershell
+omp --list-models 2>&1 | Select-String -Pattern "kiro|Failed to load extension"
+```
+
+### Clean reinstall
+
+```powershell
+omp plugin uninstall omp-provider-kiro
+Remove-Item "$env:USERPROFILE\.omp\plugins\node_modules\omp-provider-kiro" -Recurse -Force -ErrorAction SilentlyContinue
+omp plugin install .
+```
+
+### Clean old upstream plugin
+
+```powershell
+omp plugin uninstall pi-provider-kiro
+Remove-Item "$env:USERPROFILE\.omp\plugins\node_modules\pi-provider-kiro" -Recurse -Force -ErrorAction SilentlyContinue
+```
+
+### Verify credentials
+
+```powershell
+kiro-cli whoami
+```
+
+## Differences from upstream
+
+| Feature | upstream (pi-provider-kiro) | this fork (omp-provider-kiro) |
+|---------|---------------------------|-------------------------------|
+| Package imports | `@earendil-works/*` externalized | Self-contained bundle, no externals |
+| Login UI | Custom TUI (SelectList, Input) | Simple prompt fallback |
+| Windows DB path | `%APPDATA%` only | `%LOCALAPPDATA%` + `%APPDATA%` fallback |
+| Build output | Relies on PI runtime resolution | Fully bundled ESM, node:* only |
+| OMP manifest | `pi.extensions` only | `omp.extensions` + `pi.extensions` |
 
 ## License
 
