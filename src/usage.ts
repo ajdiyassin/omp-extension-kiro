@@ -3,6 +3,7 @@
 
 import type { OAuthCredentials } from "@oh-my-pi/pi-ai";
 import type { KiroCredentials } from "./oauth.js";
+import { extractRegionFromProfileArn } from "./models.js";
 
 const USAGE_ENDPOINT = "https://q.{region}.amazonaws.com/";
 const MANAGE_USAGE_URL = "https://app.kiro.dev/account/usage";
@@ -117,7 +118,9 @@ interface KiroListProfilesResponse {
 }
 
 function getRegion(credentials: OAuthCredentials): string {
-  return (credentials as KiroCredentials).region || "us-east-1";
+  return (credentials as KiroCredentials).region ||
+    extractRegionFromProfileArn((credentials as KiroCredentials).profileArn) ||
+    "us-east-1";
 }
 
 function getEndpoint(credentials: OAuthCredentials): string {

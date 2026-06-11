@@ -12,8 +12,6 @@ vi.mock("../src/kiro-cli.js", () => ({
 }));
 
 describe("Feature 3: OAuth — Token Refresh", () => {
-  // Interactive login / device code flow tests live in test/login.test.ts (Feature 10)
-
   describe("refreshKiroToken", () => {
     it("refreshes token using encoded refresh field", async () => {
       const mockFetch = vi.fn().mockResolvedValueOnce({
@@ -26,7 +24,8 @@ describe("Feature 3: OAuth — Token Refresh", () => {
         refresh: "old_rt|cid|csec|idc",
         access: "old_at",
         expires: 0,
-      });
+        region: "us-east-1",
+      } as KiroCredentials);
       expect(creds.access).toBe("new_at");
       expect(creds.refresh).toContain("new_rt|cid|csec|idc");
 
@@ -36,8 +35,9 @@ describe("Feature 3: OAuth — Token Refresh", () => {
       vi.unstubAllGlobals();
     });
 
-    it("throws on failed refresh", async () => {
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: false, status: 401 }));
+    it("throws on failed refresh (all regions fail)", async () => {
+      // Persistent 401 so every probed region fails
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
       await expect(refreshKiroToken({ refresh: "rt|c|s|idc", access: "x", expires: 0 })).rejects.toThrow();
       vi.unstubAllGlobals();
     });
@@ -67,8 +67,9 @@ describe("Feature 3: OAuth — Token Refresh", () => {
       vi.unstubAllGlobals();
     });
 
-    it("throws on desktop token refresh failure", async () => {
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: false, status: 401 }));
+    it("throws on desktop token refresh failure (all regions fail)", async () => {
+      // Persistent 401 so every probed region fails
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
       await expect(
         refreshKiroToken({
           refresh: "desk_rt|desktop",
@@ -80,10 +81,11 @@ describe("Feature 3: OAuth — Token Refresh", () => {
       vi.unstubAllGlobals();
     });
 
-    it("throws on desktop token refresh with missing accessToken", async () => {
+    it("throws on desktop token refresh with missing accessToken (all regions)", async () => {
+      // Persistent response with no accessToken so every probed region fails
       vi.stubGlobal(
         "fetch",
-        vi.fn().mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ expiresIn: 3600 }) }),
+        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ expiresIn: 3600 }) }),
       );
       await expect(
         refreshKiroToken({
@@ -96,7 +98,7 @@ describe("Feature 3: OAuth — Token Refresh", () => {
       vi.unstubAllGlobals();
     });
 
-    it("uses region from credentials for IDC refresh", async () => {
+    it("uses region from credentials for IDC refresh (tries it first)", async () => {
       const mockFetch = vi.fn().mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ accessToken: "new_at", refreshToken: "new_rt", expiresIn: 3600 }),
@@ -126,13 +128,14 @@ describe("Feature 3: OAuth — Token Refresh", () => {
         authMethod: "idc",
       });
 
-      const mockFetch = vi
-        .fn()
-        .mockResolvedValueOnce({ ok: false, status: 401 })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ accessToken: "new_at", refreshToken: "new_rt", expiresIn: 3600 }),
-        });
+      // Fail all probes for the original token, succeed for cli token (matched by refreshToken)
+      const mockFetch = vi.fn().mockImplementation(async (_url: string, options: RequestInit) => {
+        const body = JSON.parse(options.body as string);
+        if (body.refreshToken === "cli_rt") {
+          return { ok: true, json: () => Promise.resolve({ accessToken: "new_at", refreshToken: "new_rt", expiresIn: 3600 }) };
+        }
+        return { ok: false, status: 401 };
+      });
       vi.stubGlobal("fetch", mockFetch);
 
       const creds = await refreshKiroToken({ refresh: "stale_rt|cid|csec|idc", access: "stale_at", expires: 0 });
@@ -152,11 +155,8 @@ describe("Feature 3: OAuth — Token Refresh", () => {
         authMethod: "idc",
       });
 
-      const mockFetch = vi
-        .fn()
-        .mockResolvedValueOnce({ ok: false, status: 401 })
-        .mockResolvedValueOnce({ ok: false, status: 401 });
-      vi.stubGlobal("fetch", mockFetch);
+      // All probes fail for both token sets
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401 }));
 
       const creds = await refreshKiroToken({
         refresh: "old_rt|cid|csec|idc",
@@ -165,6 +165,70 @@ describe("Feature 3: OAuth — Token Refresh", () => {
       });
       expect(creds.access).toBe("old_at");
       expect(creds.expires).toBeGreaterThan(Date.now());
+      vi.unstubAllGlobals();
+    });
+
+    // --- New tests ---
+
+    it("IDC refresh derives region from profileArn when region is missing", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ accessToken: "new_at", refreshToken: "new_rt", expiresIn: 3600 }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      const creds = await refreshKiroToken({
+        refresh: "old_rt|cid|csec|idc",
+        access: "old_at",
+        expires: 0,
+        clientId: "cid",
+        clientSecret: "csec",
+        profileArn: "arn:aws:codewhisperer:eu-central-1:123:profile/test",
+      } as KiroCredentials);
+
+      expect(creds.access).toBe("new_at");
+      expect((creds as KiroCredentials).region).toBe("eu-central-1");
+      expect(mockFetch.mock.calls[0][0]).toContain("oidc.eu-central-1.amazonaws.com");
+      vi.unstubAllGlobals();
+    });
+
+    it("tries next region when first IDC candidate fails", async () => {
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: false, status: 400 }) // first candidate fails
+        .mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve({ accessToken: "new_at", refreshToken: "new_rt", expiresIn: 3600 }),
+        });
+      vi.stubGlobal("fetch", mockFetch);
+
+      // No region or profileArn → first candidate is eu-central-1
+      const creds = await refreshKiroToken({
+        refresh: "old_rt|cid|csec|idc",
+        access: "old_at",
+        expires: 0,
+      } as KiroCredentials);
+
+      expect(creds.access).toBe("new_at");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      vi.unstubAllGlobals();
+    });
+
+    it("refreshed IDC credential carries the successful region", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ accessToken: "at", refreshToken: "rt", expiresIn: 3600 }),
+      }));
+
+      const creds = await refreshKiroToken({
+        refresh: "old_rt|cid|csec|idc",
+        access: "old",
+        expires: 0,
+        clientId: "cid",
+        clientSecret: "csec",
+        region: "eu-central-1",
+      } as KiroCredentials);
+
+      expect((creds as KiroCredentials).region).toBe("eu-central-1");
       vi.unstubAllGlobals();
     });
   });

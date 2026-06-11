@@ -10,6 +10,7 @@
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@oh-my-pi/pi-ai";
 import { getKiroIdeCredentials, getKiroIdeCredentialsAllowExpired } from "./kiro-ide.js";
 import { interactiveLogin, loginViaKiroCli } from "./login.js";
+import { extractRegionFromProfileArn } from "./models.js";
 
 export const SSO_OIDC_ENDPOINT = "https://oidc.us-east-1.amazonaws.com";
 export const BUILDER_ID_START_URL = "https://view.awsapps.com/start";
@@ -230,58 +231,100 @@ async function refreshKiroTokenInternal(credentials: OAuthCredentials): Promise<
   }
 }
 
+function uniqueRegions(regions: (string | undefined)[]): string[] {
+  return [...new Set(regions.filter((r): r is string => !!r))];
+}
+
 async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OAuthCredentials> {
-  const parts = credentials.refresh.split("|");
+  const cred = credentials as KiroCredentials;
+  const parts = cred.refresh.split("|");
   const refreshToken = parts[0] ?? "";
   const authMethod = (parts[parts.length - 1] ?? "idc") as KiroAuthMethod;
-  const region = (credentials as KiroCredentials).region || "us-east-1";
 
   if (authMethod === "desktop") {
-    // Kiro desktop app tokens use a different refresh endpoint
-    const url = KIRO_DESKTOP_REFRESH_URL.replace("{region}", region);
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": "pi-cli" },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!response.ok) throw new Error(`Desktop token refresh failed: ${response.status}`);
-    const data = (await response.json()) as {
-      accessToken: string;
-      refreshToken?: string;
-      expiresIn: number;
-      profileArn?: string;
-    };
-    if (!data.accessToken) throw new Error("Desktop token refresh: missing accessToken");
-    return {
-      refresh: `${data.refreshToken || refreshToken}|desktop`,
-      access: data.accessToken,
-      expires: Date.now() + data.expiresIn * 1000 - 5 * 60 * 1000,
-      clientId: "",
-      clientSecret: "",
-      region,
-      authMethod: "desktop" as KiroAuthMethod,
-      profileArn: data.profileArn || (credentials as KiroCredentials).profileArn,
-    } as unknown as OAuthCredentials;
+    const regions = uniqueRegions([
+      cred.region,
+      extractRegionFromProfileArn(cred.profileArn),
+      process.env.KIRO_API_REGION,
+      "eu-central-1",
+      "us-east-1",
+    ]);
+    let lastError: Error | undefined;
+    for (const region of regions) {
+      const url = KIRO_DESKTOP_REFRESH_URL.replace("{region}", region);
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "User-Agent": "pi-cli" },
+          body: JSON.stringify({ refreshToken }),
+        });
+        if (!response.ok) { lastError = new Error(`Desktop token refresh failed: ${response.status}`); continue; }
+        const data = (await response.json()) as {
+          accessToken: string;
+          refreshToken?: string;
+          expiresIn: number;
+          profileArn?: string;
+        };
+        if (!data.accessToken) { lastError = new Error("Desktop token refresh: missing accessToken"); continue; }
+        return {
+          refresh: `${data.refreshToken || refreshToken}|desktop`,
+          access: data.accessToken,
+          expires: Date.now() + data.expiresIn * 1000 - 5 * 60 * 1000,
+          clientId: "",
+          clientSecret: "",
+          region,
+          authMethod: "desktop" as KiroAuthMethod,
+          profileArn: data.profileArn || cred.profileArn,
+        } as unknown as OAuthCredentials;
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+      }
+    }
+    throw lastError ?? new Error("Desktop token refresh failed: no region succeeded");
   }
 
-  // IDC auth method — SSO OIDC refresh
+  // IDC auth method
   const clientId = parts[1] ?? "";
   const clientSecret = parts[2] ?? "";
-  const ssoEndpoint = `https://oidc.${region}.amazonaws.com`;
-  const response = await fetch(`${ssoEndpoint}/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "User-Agent": "pi-cli" },
-    body: JSON.stringify({ clientId, clientSecret, refreshToken, grantType: "refresh_token" }),
-  });
-  if (!response.ok) throw new Error(`Token refresh failed: ${response.status}`);
-  const data = (await response.json()) as { accessToken: string; refreshToken: string; expiresIn: number };
-  return {
-    refresh: `${data.refreshToken}|${clientId}|${clientSecret}|idc`,
-    access: data.accessToken,
-    expires: Date.now() + data.expiresIn * 1000 - 5 * 60 * 1000,
-    clientId: clientId,
-    clientSecret: clientSecret,
-    region,
-    authMethod: "idc" as KiroAuthMethod,
-  } as unknown as OAuthCredentials;
+  const regions = uniqueRegions([
+    cred.region,
+    extractRegionFromProfileArn(cred.profileArn),
+    process.env.KIRO_IDC_REGION,
+    process.env.KIRO_API_REGION,
+    "eu-central-1",
+    "eu-west-1",
+    "eu-west-2",
+    "eu-west-3",
+    "eu-north-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-2",
+  ]);
+  let lastError: Error | undefined;
+  for (const region of regions) {
+    const ssoEndpoint = `https://oidc.${region}.amazonaws.com`;
+    try {
+      const response = await fetch(`${ssoEndpoint}/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "User-Agent": "pi-cli" },
+        body: JSON.stringify({ clientId, clientSecret, refreshToken, grantType: "refresh_token" }),
+      });
+      if (!response.ok) { lastError = new Error(`Token refresh failed: ${response.status}`); continue; }
+      const data = (await response.json()) as { accessToken: string; refreshToken: string; expiresIn: number };
+      if (!data.accessToken) { lastError = new Error("Token refresh: missing accessToken"); continue; }
+      return {
+        refresh: `${data.refreshToken || refreshToken}|${clientId}|${clientSecret}|idc`,
+        access: data.accessToken,
+        expires: Date.now() + data.expiresIn * 1000 - 5 * 60 * 1000,
+        clientId,
+        clientSecret,
+        region,
+        authMethod: "idc" as KiroAuthMethod,
+        profileArn: cred.profileArn,
+      } as unknown as OAuthCredentials;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
+  }
+  throw lastError ?? new Error("Token refresh failed: no region succeeded");
 }

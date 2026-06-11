@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import type { KiroAuthMethod, KiroCredentials } from "./oauth.js";
+import { extractRegionFromProfileArn } from "./models.js";
 
 const require = createRequire(import.meta.url);
 
@@ -146,7 +147,7 @@ function tryKiroCliToken(
   if (tokenData.expires_at) expiresAt = new Date(tokenData.expires_at).getTime();
   if (!allowExpired && Date.now() >= expiresAt - 2 * 60 * 1000) return undefined;
   const profileArn = tokenData.profile_arn || tokenData.profileArn;
-  const region = tokenData.region || undefined;
+  const region = tokenData.region || extractRegionFromProfileArn(profileArn);
 
   if (authMethod === "desktop") {
     return {
