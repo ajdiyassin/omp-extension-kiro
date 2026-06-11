@@ -33,6 +33,12 @@ describe("Build output validation", () => {
     expect(content).not.toMatch(/from ["']@oh-my-pi\/pi-ai["']/);
   });
 
+  it("has no obsolete kiro-cli debug refresh command", () => {
+    const content = readFileSync(distPath, "utf-8");
+    expect(content).not.toContain("debug refresh-auth-token");
+    expect(content).not.toContain("refreshViaKiroCli");
+  });
+
   it("only imports Node built-ins", () => {
     const content = readFileSync(distPath, "utf-8");
     const importLines = content.match(/^import .+ from ["'][^"']+["']/gm) || [];

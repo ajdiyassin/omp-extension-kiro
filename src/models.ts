@@ -251,7 +251,7 @@ export function filterModelsByRegion<T extends { id: string }>(models: T[], apiR
   const allowed = MODELS_BY_REGION[apiRegion];
   if (!allowed) {
     console.warn(
-      `[pi-provider-kiro] Unknown API region "${apiRegion}" — no models available. Update MODELS_BY_REGION in models.ts.`,
+      `[omp-provider-kiro] Unknown API region "${apiRegion}" — no models available. Update MODELS_BY_REGION in models.ts.`,
     );
     return [];
   }

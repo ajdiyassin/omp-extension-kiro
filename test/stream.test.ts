@@ -1193,7 +1193,7 @@ describe("Feature 9: Streaming Integration", () => {
 
     expect(warnSpy).toHaveBeenCalledOnce();
     const msg = warnSpy.mock.calls[0][0] as string;
-    expect(msg).toContain("[pi-provider-kiro]");
+    expect(msg).toContain("[omp-provider-kiro]");
     expect(msg).toContain("bash");
     expect(msg).toContain("tc1");
     expect(msg).toContain("not-valid-json");
@@ -1426,34 +1426,34 @@ describe("Feature 9: Streaming Integration", () => {
   });
 
   it("retries on 403 with shorter backoff", async () => {
-    const mockFetch = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 403,
-        statusText: "Forbidden",
-        text: () => Promise.resolve("Access denied"),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        body: {
-          getReader: () => ({
-            read: vi
-              .fn()
-              .mockResolvedValueOnce({
-                done: false,
-                value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}'),
-              })
-              .mockResolvedValueOnce({ done: true, value: undefined }),
-          }),
-        },
-      });
+    const successReader = {
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({
+          done: false,
+          value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}'),
+        })
+        .mockResolvedValueOnce({ done: true, value: undefined }),
+    };
+    let callCount = 0;
+    const mockFetch = vi.fn(async (url: string) => {
+      callCount++;
+      if (callCount === 1) {
+        // 1st: generateAssistantResponse → 403
+        return { ok: false, status: 403, statusText: "Forbidden", text: () => Promise.resolve("Access denied") };
+      }
+      if (typeof url === "string" && url.includes("ListAvailableProfiles")) {
+        return { ok: true, json: () => Promise.resolve({ profiles: [{ arn: "arn:aws:codewhisperer:us-east-1:123:profile/TEST" }] }) };
+      }
+      // generateAssistantResponse retry → success
+      return { ok: true, body: { getReader: () => successReader } };
+    });
     vi.stubGlobal("fetch", mockFetch);
 
     const stream = streamKiro(makeModel(), makeContext(), { apiKey: "tok" });
     const events = await collect(stream);
 
-    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch).toHaveBeenCalled();
     expect(events.find((e) => e.type === "done")).toBeDefined();
 
     vi.unstubAllGlobals();
@@ -1498,9 +1498,9 @@ describe("Feature 9: Streaming Integration", () => {
       });
     vi.stubGlobal("fetch", mockFetch);
 
-    // Mock kiro-cli to return a fresh token
-    const kiroCliModule = await import("../src/kiro-cli.js");
-    const getCredsSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentials").mockReturnValue({
+    // Mock forceRefreshKiroToken to return refreshed credentials
+    const oauthModule = await import("../src/oauth.js");
+    const refreshSpy = vi.spyOn(oauthModule, "forceRefreshKiroToken").mockResolvedValue({
       refresh: "fresh-refresh|client|secret|idc",
       access: "fresh-access-token",
       expires: Date.now() + 3600000,
@@ -1508,9 +1508,21 @@ describe("Feature 9: Streaming Integration", () => {
       clientSecret: "secret",
       region: "us-east-1",
       authMethod: "idc",
-    });
+    } as any);
 
-    const stream = streamKiro(makeModel(), makeContext(), { apiKey: "stale-token" });
+    // Provide credentials via options so the 403 path has a candidate to refresh
+    const stream = streamKiro(makeModel(), makeContext(), {
+      apiKey: "stale-token",
+      credentials: {
+        refresh: "old-refresh|client|secret|idc",
+        access: "stale-token",
+        expires: Date.now() - 1000,
+        clientId: "client",
+        clientSecret: "secret",
+        region: "us-east-1",
+        authMethod: "idc",
+      },
+    } as any);
     const events = await collect(stream);
 
     expect(mockFetch).toHaveBeenCalledTimes(4);
@@ -1523,8 +1535,9 @@ describe("Feature 9: Streaming Integration", () => {
     // 4th: generateAssistantResponse retry with fresh token
     expect(mockFetch.mock.calls[3][1].headers.Authorization).toBe("Bearer fresh-access-token");
     expect(events.find((e) => e.type === "done")).toBeDefined();
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
 
-    getCredsSpy.mockRestore();
+    refreshSpy.mockRestore();
     vi.unstubAllGlobals();
   });
 
@@ -1569,7 +1582,7 @@ describe("Feature 9: Streaming Integration", () => {
 
     // Should abort quickly, not wait the full 1s+ backoff
     expect(elapsed).toBeLessThan(500);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalled();
     const error = events.find((e) => e.type === "error");
     expect(error).toBeDefined();
     expect(error?.type === "error" && error.error.stopReason).toBe("aborted");

@@ -21,7 +21,8 @@ import { debugEnabled, debugLog } from "./debug.js";
 import { parseKiroEvents } from "./event-parser.js";
 import { createAssistantMessageEventStream } from "./event-stream.js";
 import { addPlaceholderTools, HISTORY_LIMIT, HISTORY_LIMIT_CONTEXT_WINDOW, truncateHistory } from "./history.js";
-import { getKiroCliCredentials, getKiroCliCredentialsAllowExpired, refreshViaKiroCli } from "./kiro-cli.js";
+import { getKiroCliCredentials, getKiroCliCredentialsAllowExpired } from "./kiro-cli.js";
+import { forceRefreshKiroToken, type KiroCredentials } from "./oauth.js";
 import { resolveKiroModel } from "./models.js";
 import {
   capacityRetryConfig,
@@ -137,7 +138,7 @@ async function resolveProfileArn(accessToken: string, endpoint: string): Promise
     });
     if (!r.ok) {
       console.warn(
-        `[pi-provider-kiro] Failed to resolve profileArn: ListAvailableProfiles returned ${r.status} ${r.statusText}. Will retry on the next request.`,
+        `[omp-provider-kiro] Failed to resolve profileArn: ListAvailableProfiles returned ${r.status} ${r.statusText}. Will retry on the next request.`,
       );
       return undefined;
     }
@@ -153,7 +154,7 @@ async function resolveProfileArn(accessToken: string, endpoint: string): Promise
     return arn;
   } catch (error) {
     console.warn(
-      `[pi-provider-kiro] Failed to resolve profileArn: ${error instanceof Error ? error.message : String(error)}. Will retry on the next request.`,
+      `[omp-provider-kiro] Failed to resolve profileArn: ${error instanceof Error ? error.message : String(error)}. Will retry on the next request.`,
     );
     return undefined;
   }
@@ -176,7 +177,7 @@ function emitToolCall(
     args = JSON.parse(state.input) as Record<string, unknown>;
   } catch (e) {
     console.warn(
-      `[pi-provider-kiro] Failed to parse tool input for "${state.name}" (toolUseId: ${state.toolUseId}): ${e instanceof Error ? e.message : String(e)}. Raw input (${state.input.length} chars): ${state.input.substring(0, 200)}`,
+      `[omp-provider-kiro] Failed to parse tool input for "${state.name}" (toolUseId: ${state.toolUseId}): ${e instanceof Error ? e.message : String(e)}. Raw input (${state.input.length} chars): ${state.input.substring(0, 200)}`,
     );
     return false;
   }
@@ -447,7 +448,7 @@ export function streamKiro(
               capacityRetryCount++;
               const delayMs = exponentialBackoff(capacityRetryCount - 1, capacityRetryConfig.baseDelayMs, 30_000);
               const msg = `INSUFFICIENT_MODEL_CAPACITY — retrying in ${delayMs}ms (${capacityRetryCount}/${capacityRetryConfig.maxRetries})`;
-              console.error(`[pi-provider-kiro] ${msg}`);
+              console.error(`[omp-provider-kiro] ${msg}`);
               logCapacityEvent(msg);
               await abortableDelay(delayMs, options?.signal);
               continue;
@@ -459,13 +460,28 @@ export function streamKiro(
             }
             if (response.status === 403 && !isCapacityError(errText) && retryCount < maxRetries) {
               retryCount++;
-              // On 403, try to get a fresh token before retrying — the current
-              // one may have been rotated by kiro-cli or another session. If
-              // the cached kiro-cli token is also stale, actively refresh it.
-              const freshCreds = getKiroCliCredentials() ?? refreshViaKiroCli();
-              if (freshCreds?.access) accessToken = freshCreds.access;
 
-              // Re-resolve profileArn with fresh credentials
+              const optionCreds = (options as unknown as { credentials?: KiroCredentials })?.credentials;
+              const cliCreds = getKiroCliCredentials();
+              const expiredCliCreds = getKiroCliCredentialsAllowExpired();
+              const candidates = [optionCreds, cliCreds, expiredCliCreds].filter(
+                (c): c is KiroCredentials => !!c?.refresh && !!c?.access,
+              );
+
+              let freshCreds: KiroCredentials | undefined;
+              for (const candidate of candidates) {
+                try {
+                  freshCreds = (await forceRefreshKiroToken(candidate)) as KiroCredentials;
+                  if (freshCreds?.access) break;
+                } catch {
+                  // Try next candidate
+                }
+              }
+
+              if (freshCreds?.access) {
+                accessToken = freshCreds.access;
+              }
+
               profileArnCache.delete(endpoint);
               const refreshedProfileArn =
                 (options as unknown as { credentials?: { profileArn?: string }; profileArn?: string })?.credentials
@@ -475,7 +491,7 @@ export function streamKiro(
               profileArn = refreshedProfileArn || (await resolveProfileArn(accessToken, endpoint));
               const delayMs = exponentialBackoff(retryCount - 1, 500, MAX_RETRY_DELAY);
               await abortableDelay(delayMs, options?.signal);
-              break; // break inner loop, continue outer loop
+              break;
             }
             // Avoid pi-coding-agent's outer auto-retry from treating known
             // Kiro quota/capacity body markers as generic retryable 429s.
@@ -730,7 +746,7 @@ export function streamKiro(
             retryCount++;
             const delayMs = exponentialBackoff(retryCount - 1, 1000, MAX_RETRY_DELAY);
             console.warn(
-              `[pi-provider-kiro] ${isEchoLoop ? 'Echo loop detected (model responded with just "Continue")' : "Empty response (no text, no tool calls)"} — retrying (${retryCount}/${maxRetries})`,
+              `[omp-provider-kiro] ${isEchoLoop ? 'Echo loop detected (model responded with just "Continue")' : "Empty response (no text, no tool calls)"} — retrying (${retryCount}/${maxRetries})`,
             );
             // Reset output content for the retry
             output.content = [];
@@ -743,11 +759,11 @@ export function streamKiro(
             // loop from interpreting "Continue" as a continuation signal.
             (output.content[textBlockIndex as number] as TextContent).text = "";
             console.warn(
-              `[pi-provider-kiro] Echo loop persisted after ${maxRetries} retries — stripping "Continue" response`,
+              `[omp-provider-kiro] Echo loop persisted after ${maxRetries} retries — stripping "Continue" response`,
             );
           } else {
             console.warn(
-              `[pi-provider-kiro] Empty response after ${maxRetries} retries — returning stopReason:"stop" to avoid agent loop stall`,
+              `[omp-provider-kiro] Empty response after ${maxRetries} retries — returning stopReason:"stop" to avoid agent loop stall`,
             );
           }
         }

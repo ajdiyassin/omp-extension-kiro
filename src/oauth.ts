@@ -154,6 +154,25 @@ export async function refreshKiroToken(credentials: OAuthCredentials): Promise<O
   return refreshed;
 }
 
+export async function forceRefreshKiroToken(credentials: OAuthCredentials): Promise<OAuthCredentials> {
+  const refreshed = await refreshKiroTokenDirect(credentials);
+
+  try {
+    const { saveKiroCliCredentials } = await import("./kiro-cli.js");
+    saveKiroCliCredentials(refreshed as KiroCredentials);
+  } catch {}
+
+  if (!process.env.VITEST) {
+    try {
+      const { resolveApiRegion, updateKiroModelsCache } = await import("./models.js");
+      const region = resolveApiRegion((refreshed as KiroCredentials).region);
+      updateKiroModelsCache(refreshed.access, region, (refreshed as KiroCredentials).profileArn).catch(() => {});
+    } catch {}
+  }
+
+  return refreshed;
+}
+
 async function refreshKiroTokenInternal(credentials: OAuthCredentials): Promise<OAuthCredentials> {
   const { getKiroCliCredentials, getKiroCliCredentialsAllowExpired, saveKiroCliCredentials, getKiroCliSocialToken } =
     await import("./kiro-cli.js");
