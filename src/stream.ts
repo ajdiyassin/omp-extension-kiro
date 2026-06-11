@@ -23,7 +23,7 @@ import { createAssistantMessageEventStream } from "./event-stream.js";
 import { addPlaceholderTools, HISTORY_LIMIT, HISTORY_LIMIT_CONTEXT_WINDOW, truncateHistory } from "./history.js";
 import { getKiroCliCredentials, getKiroCliCredentialsAllowExpired } from "./kiro-cli.js";
 import { forceRefreshKiroToken, type KiroCredentials } from "./oauth.js";
-import { resolveKiroModel } from "./models.js";
+import { endpointForApiRegion, extractRegionFromEndpoint, resolveApiRegion, resolveKiroModel } from "./models.js";
 import {
   capacityRetryConfig,
   exponentialBackoff,
@@ -218,27 +218,45 @@ export function streamKiro(
     try {
       let accessToken = options?.apiKey as string | undefined;
       if (!accessToken) throw new Error("Kiro credentials not set. Run /login kiro or install kiro-cli.");
-      const endpoint = model.baseUrl || "https://q.us-east-1.amazonaws.com/generateAssistantResponse";
 
-      const optionProfileArn =
-        (options as unknown as { credentials?: { profileArn?: string }; profileArn?: string })?.credentials
-          ?.profileArn || (options as unknown as { profileArn?: string })?.profileArn;
-      const cliCreds = getKiroCliCredentials() ?? getKiroCliCredentialsAllowExpired();
-      const cliProfileArn = cliCreds?.access === accessToken ? cliCreds.profileArn : undefined;
+      const optionCreds = (options as unknown as { credentials?: KiroCredentials })?.credentials;
+      const cliCreds = getKiroCliCredentials();
+      const expiredCliCreds = getKiroCliCredentialsAllowExpired();
+
+      const matchingCliCreds =
+        cliCreds?.access === accessToken ? cliCreds
+          : expiredCliCreds?.access === accessToken ? expiredCliCreds
+            : undefined;
+
+      const requestedRegion =
+        process.env.KIRO_API_REGION ||
+        optionCreds?.region ||
+        matchingCliCreds?.region ||
+        cliCreds?.region ||
+        expiredCliCreds?.region ||
+        extractRegionFromEndpoint(model.baseUrl);
+
+      const apiRegion = resolveApiRegion(requestedRegion);
+      let endpoint = endpointForApiRegion(apiRegion);
+
+      const optionProfileArn = optionCreds?.profileArn || (options as unknown as { profileArn?: string })?.profileArn;
+      const cliProfileArn = matchingCliCreds?.profileArn;
       let profileArn = optionProfileArn || cliProfileArn || (await resolveProfileArn(accessToken, endpoint));
 
       // Trigger dynamic models cache update in the background if empty or stale
-      const ep = new URL(endpoint);
-      const region = ep.hostname.split(".")[1] || "us-east-1";
       const { isCacheStale, updateKiroModelsCache } = await import("./models.js");
-      if (!process.env.VITEST && isCacheStale(region)) {
-        updateKiroModelsCache(accessToken, region, profileArn).catch(() => {});
+      if (!process.env.VITEST && isCacheStale(apiRegion)) {
+        updateKiroModelsCache(accessToken, apiRegion, profileArn).catch(() => {});
       }
 
       const kiroModelId = resolveKiroModel(model.id);
       const thinkingEnabled = !!options?.reasoning || model.reasoning;
       debugLog("request.init", {
         endpoint,
+        apiRegion,
+        credentialRegion: optionCreds?.region,
+        cliRegion: matchingCliCreds?.region || cliCreds?.region || expiredCliCreds?.region,
+        envRegion: process.env.KIRO_API_REGION,
         model: model.id,
         kiroModelId,
         contextWindow: model.contextWindow,
@@ -480,15 +498,14 @@ export function streamKiro(
 
               if (freshCreds?.access) {
                 accessToken = freshCreds.access;
+                const refreshedApiRegion = resolveApiRegion(
+                  process.env.KIRO_API_REGION || freshCreds.region || apiRegion,
+                );
+                endpoint = endpointForApiRegion(refreshedApiRegion);
               }
 
               profileArnCache.delete(endpoint);
-              const refreshedProfileArn =
-                (options as unknown as { credentials?: { profileArn?: string }; profileArn?: string })?.credentials
-                  ?.profileArn ||
-                (options as unknown as { profileArn?: string })?.profileArn ||
-                freshCreds?.profileArn;
-              profileArn = refreshedProfileArn || (await resolveProfileArn(accessToken, endpoint));
+              profileArn = freshCreds?.profileArn || (await resolveProfileArn(accessToken, endpoint));
               const delayMs = exponentialBackoff(retryCount - 1, 500, MAX_RETRY_DELAY);
               await abortableDelay(delayMs, options?.signal);
               break;

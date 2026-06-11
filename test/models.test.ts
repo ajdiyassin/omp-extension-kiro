@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterModelsByRegion, KIRO_MODEL_IDS, kiroModels, resolveApiRegion, resolveKiroModel } from "../src/models.js";
+import { endpointForApiRegion, extractRegionFromEndpoint, filterModelsByRegion, KIRO_MODEL_IDS, kiroModels, resolveApiRegion, resolveKiroModel } from "../src/models.js";
 
 describe("Feature 2: Model Definitions", () => {
   describe("resolveKiroModel", () => {
@@ -162,6 +162,24 @@ describe("Feature 2: Model Definitions", () => {
       for (const m of kiroModels.filter((x) => !x.reasoning)) {
         expect(supportedLevels(m), `${m.id} supported levels`).toEqual(["off"]);
       }
+    });
+  });
+
+  describe("endpointForApiRegion", () => {
+    it("constructs correct endpoint", () => {
+      expect(endpointForApiRegion("eu-central-1")).toBe("https://q.eu-central-1.amazonaws.com/generateAssistantResponse");
+      expect(endpointForApiRegion("us-east-1")).toBe("https://q.us-east-1.amazonaws.com/generateAssistantResponse");
+    });
+  });
+
+  describe("extractRegionFromEndpoint", () => {
+    it("extracts region from valid endpoint", () => {
+      expect(extractRegionFromEndpoint("https://q.us-east-1.amazonaws.com/generateAssistantResponse")).toBe("us-east-1");
+      expect(extractRegionFromEndpoint("https://q.eu-central-1.amazonaws.com/generateAssistantResponse")).toBe("eu-central-1");
+    });
+    it("returns undefined for invalid input", () => {
+      expect(extractRegionFromEndpoint(undefined)).toBeUndefined();
+      expect(extractRegionFromEndpoint("not-a-url")).toBeUndefined();
     });
   });
 });

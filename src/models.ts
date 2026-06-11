@@ -205,6 +205,19 @@ export function resolveApiRegion(ssoRegion: string | undefined): string {
   return API_REGION_MAP[ssoRegion] ?? ssoRegion;
 }
 
+export function endpointForApiRegion(apiRegion: string): string {
+  return `https://q.${apiRegion}.amazonaws.com/generateAssistantResponse`;
+}
+
+export function extractRegionFromEndpoint(endpoint: string | undefined): string | undefined {
+  if (!endpoint) return undefined;
+  try {
+    const parts = new URL(endpoint).hostname.split(".");
+    if (parts[0] === "q" && parts[1]) return parts[1];
+  } catch {}
+  return undefined;
+}
+
 /**
  * Model availability per API region (allowlist).
  * Source: https://kiro.dev/docs/cli/models/

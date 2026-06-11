@@ -1591,6 +1591,103 @@ describe("Feature 9: Streaming Integration", () => {
   });
 
   // =========================================================================
+  // Region selection
+  // =========================================================================
+
+  it("uses KIRO_API_REGION env override for endpoint", async () => {
+    process.env.KIRO_API_REGION = "eu-central-1";
+    const mockFetch = vi.fn(async (url: string) => {
+      if (url.includes("ListAvailableProfiles")) {
+        return { ok: true, json: () => Promise.resolve({ profiles: [{ arn: "arn:test" }] }) };
+      }
+      return {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn()
+              .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}') })
+              .mockResolvedValueOnce({ done: true, value: undefined }),
+          }),
+        },
+      };
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stream = streamKiro(makeModel(), makeContext(), { apiKey: "tok" });
+    await collect(stream);
+
+    const kiroCall = mockFetch.mock.calls.find(([url]) => typeof url === "string" && url.includes("generateAssistantResponse"));
+    expect(kiroCall?.[0]).toContain("q.eu-central-1.amazonaws.com");
+
+    delete process.env.KIRO_API_REGION;
+    vi.unstubAllGlobals();
+  });
+
+  it("uses credentials region for endpoint when no env override", async () => {
+    const mockFetch = vi.fn(async (url: string) => {
+      if (url.includes("ListAvailableProfiles")) {
+        return { ok: true, json: () => Promise.resolve({ profiles: [{ arn: "arn:test" }] }) };
+      }
+      return {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn()
+              .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}') })
+              .mockResolvedValueOnce({ done: true, value: undefined }),
+          }),
+        },
+      };
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stream = streamKiro(makeModel(), makeContext(), {
+      apiKey: "tok",
+      credentials: { region: "eu-west-1", access: "tok", refresh: "r|c|s|idc", expires: Date.now() + 9e5, clientId: "", clientSecret: "", authMethod: "idc" },
+    } as any);
+    await collect(stream);
+
+    const kiroCall = mockFetch.mock.calls.find(([url]) => typeof url === "string" && url.includes("generateAssistantResponse"));
+    expect(kiroCall?.[0]).toContain("q.eu-central-1.amazonaws.com");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to model baseUrl region when no credentials region", async () => {
+    const kiroCliModule = await import("../src/kiro-cli.js");
+    const getCredsSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentials").mockReturnValue(undefined);
+    const getExpiredSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentialsAllowExpired").mockReturnValue(undefined);
+
+    const mockFetch = vi.fn(async (url: string) => {
+      if (url.includes("ListAvailableProfiles")) {
+        return { ok: true, json: () => Promise.resolve({ profiles: [{ arn: "arn:test" }] }) };
+      }
+      return {
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn()
+              .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}') })
+              .mockResolvedValueOnce({ done: true, value: undefined }),
+          }),
+        },
+      };
+    });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const model = { ...makeModel(), baseUrl: "https://q.us-east-1.amazonaws.com/generateAssistantResponse" };
+    const stream = streamKiro(model, makeContext(), { apiKey: "tok" });
+    await collect(stream);
+
+    const kiroCall = mockFetch.mock.calls.find(([url]) => typeof url === "string" && url.includes("generateAssistantResponse"));
+    expect(kiroCall?.[0]).toContain("q.us-east-1.amazonaws.com");
+
+    getCredsSpy.mockRestore();
+    getExpiredSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  // =========================================================================
   // Content deduplication (Task 2.2)
   // =========================================================================
 
