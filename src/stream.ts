@@ -386,7 +386,7 @@ export function streamKiro(
         } = buildHistory(normalized, kiroModelId, effectiveSystemPrompt);
         // Scale history limit to model context window
         // HISTORY_LIMIT (850K chars) is sized for 200K token models
-        const dynamicHistoryLimit = Math.floor((model.contextWindow / HISTORY_LIMIT_CONTEXT_WINDOW) * HISTORY_LIMIT);
+        const dynamicHistoryLimit = Math.floor(((model.contextWindow ?? 0) / HISTORY_LIMIT_CONTEXT_WINDOW) * HISTORY_LIMIT);
         const history = truncateHistory(rawHistory, dynamicHistoryLimit);
         const toolResultLimit = TOOL_RESULT_LIMIT;
         const currentMessages = normalized.slice(currentMsgStartIdx);
@@ -718,7 +718,7 @@ export function streamKiro(
             switch (event.type) {
               case "contextUsage": {
                 const pct = event.data.contextUsagePercentage;
-                output.usage.input = Math.round((pct / 100) * model.contextWindow);
+                output.usage.input = Math.round((pct / 100) * (model.contextWindow ?? 0));
                 // Pass through the raw percentage so rho-web (and other UIs)
                 // can display it directly instead of back-calculating from
                 // input tokens / guessed context window — which breaks when
