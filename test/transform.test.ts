@@ -297,3 +297,139 @@ describe("buildHistory tool-use ID normalization", () => {
     expect(callId).not.toBe("functions.search:6");
   });
 });
+
+describe("convertToolsToKiro — v16 schema compatibility", () => {
+  const ARKTYPE_IMPL_KEYS = ["domain", "sequence", "branches", "proto"];
+
+  function allRequired(obj: unknown): void {
+    if (Array.isArray(obj)) {
+      for (const item of obj) allRequired(item);
+      return;
+    }
+    if (obj && typeof obj === "object") {
+      const o = obj as Record<string, unknown>;
+      if ("required" in o) {
+        expect(Array.isArray(o.required)).toBe(true);
+        for (const r of o.required as unknown[]) expect(typeof r).toBe("string");
+      }
+      for (const v of Object.values(o)) allRequired(v);
+    }
+  }
+
+  function noArkKeys(obj: unknown): void {
+    if (Array.isArray(obj)) {
+      for (const item of obj) noArkKeys(item);
+      return;
+    }
+    if (obj && typeof obj === "object") {
+      const o = obj as Record<string, unknown>;
+      for (const k of ARKTYPE_IMPL_KEYS) expect(k in o).toBe(false);
+      // required must not contain {key, value} objects
+      if (Array.isArray(o.required)) {
+        for (const r of o.required) expect(typeof r).toBe("string");
+      }
+      for (const v of Object.values(o)) noArkKeys(v);
+    }
+  }
+
+  it("plain JSON Schema tool serializes correctly", () => {
+    const tool = {
+      name: "search",
+      description: "Search for text",
+      parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+    } as any;
+    const [spec] = convertToolsToKiro([tool]);
+    expect(spec.toolSpecification.name).toBe("search");
+    expect(spec.toolSpecification.inputSchema.json).toMatchObject({
+      type: "object",
+      properties: { query: { type: "string" } },
+      required: ["query"],
+    });
+  });
+
+  it("serialized ArkType-AST (eval) becomes valid JSON Schema", () => {
+    const tool = {
+      name: "eval",
+      description: "Execute cells",
+      parameters: {
+        domain: "object",
+        required: [
+          {
+            key: "cells",
+            value: {
+              proto: "Array",
+              sequence: {
+                domain: "object",
+                required: [{ key: "language", value: "string" }],
+              },
+            },
+          },
+        ],
+      },
+    } as any;
+    const [spec] = convertToolsToKiro([tool]);
+    const schema = spec.toolSpecification.inputSchema.json;
+
+    // Must be standard JSON Schema
+    expect(schema.type).toBe("object");
+    expect(schema.properties).toBeDefined();
+    expect(schema.properties.cells).toBeDefined();
+    expect(schema.properties.cells.type).toBe("array");
+    expect(schema.required).toEqual(["cells"]);
+  });
+
+  it("every resulting required value is an array of strings (recursive)", () => {
+    const tool = {
+      name: "eval",
+      description: "Execute cells",
+      parameters: {
+        domain: "object",
+        required: [
+          {
+            key: "cells",
+            value: {
+              proto: "Array",
+              sequence: {
+                domain: "object",
+                required: [{ key: "language", value: "string" }],
+              },
+            },
+          },
+        ],
+      },
+    } as any;
+    const [spec] = convertToolsToKiro([tool]);
+    allRequired(spec.toolSpecification.inputSchema.json);
+  });
+
+  it("ArkType implementation keys do not leak into the output", () => {
+    const tool = {
+      name: "eval",
+      description: "Execute cells",
+      parameters: {
+        domain: "object",
+        required: [
+          {
+            key: "cells",
+            value: {
+              proto: "Array",
+              sequence: {
+                domain: "object",
+                required: [{ key: "language", value: "string" }],
+              },
+            },
+          },
+        ],
+      },
+    } as any;
+    const [spec] = convertToolsToKiro([tool]);
+    noArkKeys(spec.toolSpecification.inputSchema.json);
+  });
+
+  it("existing tool-ID normalization still works (convertToolsToKiro does not affect tool results)", () => {
+    // convertToolsToKiro is about tool *specs*, not IDs, so this just confirms no regression.
+    const tool = { name: "find", description: "Find", parameters: { type: "object", properties: {} } } as any;
+    const [spec] = convertToolsToKiro([tool]);
+    expect(spec.toolSpecification.name).toBe("find");
+  });
+});

@@ -10,6 +10,7 @@ import type {
   ToolCall,
   ToolResultMessage,
 } from "@oh-my-pi/pi-ai";
+import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema/wire";
 import type { KiroAdaptivePayload } from "./adaptive-thinking.js";
 
 export interface KiroImage {
@@ -120,7 +121,7 @@ export function convertToolsToKiro(tools: Tool[]): KiroToolSpec[] {
     toolSpecification: {
       name: tool.name,
       description: tool.description,
-      inputSchema: { json: tool.parameters as Record<string, unknown> },
+      inputSchema: { json: toolWireSchema(tool) },
     },
   }));
 }
