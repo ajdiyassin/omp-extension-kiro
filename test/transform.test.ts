@@ -433,3 +433,79 @@ describe("convertToolsToKiro — v16 schema compatibility", () => {
     expect(spec.toolSpecification.name).toBe("find");
   });
 });
+
+
+describe("convertToolsToKiro — Kiro-safe tool descriptions (OMP 16.1.x)", () => {
+  it("empty description gets a minimal fallback", () => {
+    const out = convertToolsToKiro([
+      {
+        name: "read",
+        description: "",
+        parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      },
+    ] as Tool[]);
+    expect(out[0].toolSpecification.description).toBe("Use the read tool.");
+  });
+
+  it("whitespace-only description gets a minimal fallback", () => {
+    const out = convertToolsToKiro([
+      {
+        name: "read",
+        description: "   ",
+        parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      },
+    ] as Tool[]);
+    expect(out[0].toolSpecification.description).toBe("Use the read tool.");
+  });
+
+  it("an existing non-empty description is preserved unchanged", () => {
+    const out = convertToolsToKiro([
+      {
+        name: "read",
+        description: "Read a file from disk.",
+        parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      },
+    ] as Tool[]);
+    expect(out[0].toolSpecification.description).toBe("Read a file from disk.");
+  });
+
+  it("undefined description gets a minimal fallback", () => {
+    const out = convertToolsToKiro([
+      { name: "eval", parameters: { type: "object", properties: {} } },
+    ] as unknown as Tool[]);
+    expect(out[0].toolSpecification.description).toBe("Use the eval tool.");
+  });
+
+  it("full tool array: every serialized Kiro tool has a non-empty description, schemas stay JSON Schema", () => {
+    const tools = [
+      { name: "read", description: "Read a file.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
+      { name: "search", description: "", parameters: { type: "object", properties: { q: { type: "string" } }, required: ["q"] } },
+      { name: "eval", description: "   ", parameters: { type: "object", properties: {} } },
+      {
+        name: "run",
+        description: "Run a command.",
+        // serialized ArkType AST (description pruned elsewhere, schema still ArkType)
+        parameters: { domain: "object", required: [{ key: "cmd", value: "string" }] },
+      },
+    ] as unknown as Tool[];
+
+    const out = convertToolsToKiro(tools);
+    expect(out).toHaveLength(4);
+    for (const t of out) {
+      expect(t.toolSpecification.description.trim().length).toBeGreaterThan(0);
+      // schema is standard JSON Schema (no raw ArkType impl keys leaking)
+      const json = t.toolSpecification.inputSchema.json as Record<string, unknown>;
+      expect("domain" in json).toBe(false);
+      if (Array.isArray((json as { required?: unknown }).required)) {
+        for (const r of (json as { required: unknown[] }).required) expect(typeof r).toBe("string");
+      }
+    }
+    // preserved + fallback correctness across the array
+    expect(out[0].toolSpecification.description).toBe("Read a file.");
+    expect(out[1].toolSpecification.description).toBe("Use the search tool.");
+    expect(out[2].toolSpecification.description).toBe("Use the eval tool.");
+    expect(out[3].toolSpecification.description).toBe("Run a command.");
+    // ArkType conversion still applied (run tool)
+    expect((out[3].toolSpecification.inputSchema.json as Record<string, unknown>).type).toBe("object");
+  });
+});

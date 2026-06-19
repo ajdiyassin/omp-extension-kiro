@@ -116,11 +116,22 @@ export function getContentText(msg: Message): string {
   return "";
 }
 
+/**
+ * Kiro rejects tool definitions with an empty description (REQUEST_BODY_INVALID /
+ * "Invalid tool use format"). OMP 16.1.x prunes provider-bound tool descriptions when
+ * the full text is already in the system prompt (Inline Tool Descriptors), leaving them
+ * empty. Preserve any non-empty description; otherwise emit a minimal placeholder.
+ */
+export function kiroToolDescription(tool: Tool): string {
+  const description = tool.description?.trim();
+  return description || `Use the ${tool.name} tool.`;
+}
+
 export function convertToolsToKiro(tools: Tool[]): KiroToolSpec[] {
   return tools.map((tool) => ({
     toolSpecification: {
       name: tool.name,
-      description: tool.description,
+      description: kiroToolDescription(tool),
       inputSchema: { json: toolWireSchema(tool) },
     },
   }));
