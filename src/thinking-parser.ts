@@ -40,6 +40,9 @@ export class ThinkingTagParser {
   private inThinking = false;
   private thinkingExtracted = false;
   private thinkingBlockIndex: number | null = null;
+  // Captured from Kiro reasoningContentEvent frames; applied to the thinking
+  // block on end so it survives being split across many stream frames.
+  private pendingSignature: string | undefined;
   private textBlockIndex: number | null = null;
   private lastTextBlockIndex: number | null = null;
   private activeEndTag: string = THINKING_END_TAG;
@@ -68,12 +71,35 @@ export class ThinkingTagParser {
       if (this.textBuffer.length >= prevLength) break;
     }
   }
+  /**
+   * Emit reasoning text directly as thinking content (bypassing the inline
+   * tag parser). Used for reasoningContentEvent frames from the Kiro stream,
+   * which carry the model's native reasoning as a separate event type — not
+   * as inline `<thinking>` tags in the content text.
+   *
+   * `signature` is the trailing Anthropic-style thinking-block signature. It
+   * is captured and applied to the thinking block on end (it usually arrives
+   * on the last reasoning frame, but may be absent when reasoning is split
+   * across frames).
+   */
+  emitReasoning(text: string, signature?: string): void {
+    if (signature !== undefined) this.pendingSignature = signature;
+    this.emitThinking(text);
+  }
+
+  private applyPendingSignature(): void {
+    if (this.pendingSignature !== undefined && this.thinkingBlockIndex !== null) {
+      const block = this.output.content[this.thinkingBlockIndex] as ThinkingContent;
+      block.thinkingSignature = this.pendingSignature;
+    }
+  }
 
   finalize(): void {
     if (this.textBuffer.length === 0) return;
     if (this.inThinking && this.thinkingBlockIndex !== null) {
       const block = this.output.content[this.thinkingBlockIndex] as ThinkingContent;
       block.thinking += this.textBuffer;
+      this.applyPendingSignature();
       this.stream.push({
         type: "thinking_delta",
         contentIndex: this.thinkingBlockIndex,
@@ -91,6 +117,7 @@ export class ThinkingTagParser {
     }
     this.textBuffer = "";
   }
+
 
   getTextBlockIndex(): number | null {
     return this.textBlockIndex ?? this.lastTextBlockIndex;
@@ -130,6 +157,7 @@ export class ThinkingTagParser {
     if (endPos !== -1) {
       if (endPos > 0) this.emitThinking(this.textBuffer.slice(0, endPos));
       if (this.thinkingBlockIndex !== null) {
+        this.applyPendingSignature();
         const block = this.output.content[this.thinkingBlockIndex] as ThinkingContent;
         this.stream.push({
           type: "thinking_end",

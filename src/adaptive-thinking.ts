@@ -20,6 +20,15 @@
 //       full         -> { thinking, output_config, max_tokens }  (advertised schema, future-proof)
 //       effort-only -> { output_config: { effort } }            (minimal; what kiro-cli sends by default)
 
+// MIGRATION DECISION (2026-07-08, kiro-cli 2.11.1): kiro-cli defaults to the
+// `effort-only` field-set (output_config.effort) at the top level, but the
+// extension defaults to `full` ({ thinking, output_config, max_tokens }). Both
+// are live-verified 200-OK against the Kiro runtime. We KEEP `full` as the
+// default because it mirrors the advertised per-model schema and is
+// future-proof (e.g., if `thinking` or `max_tokens` become required). The
+// `effort-only` shape can be opted into via KIRO_ADAPTIVE_FIELDS=effort-only to
+// mirror kiro-cli exactly. See docs/kiro-cli-latest-migration-handoff.md M3.
+
 export type OmpEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type KiroEffort = "low" | "medium" | "high" | "xhigh" | "max";
 

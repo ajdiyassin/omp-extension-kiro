@@ -1,11 +1,20 @@
 import type { Api, Model, OAuthCredentials } from "@oh-my-pi/pi-ai";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
-import { getKiroCliCredentials } from "./kiro-cli.js";
+import { getKiroApiKeyCredentials, getKiroCliCredentials } from "./kiro-cli.js";
 import { endpointForApiRegion, getCachedModels, kiroModels, resolveApiRegion } from "./models.js";
 import type { KiroCredentials } from "./oauth.js";
 import { loginKiro, refreshKiroToken } from "./oauth.js";
 import { streamKiro } from "./stream.js";
 import { fetchKiroUsage } from "./usage.js";
+
+/**
+ * M4: Credential cascade for OMP's `getCliCredentials` hook. Precedence:
+ *   1. KIRO_API_KEY env var (paid-tier API key — highest, no DB/OAuth)
+ *   2. kiro-cli SQLite DB (social / Builder ID / IdC)
+ */
+function resolveCliCredentials(): KiroCredentials | undefined {
+  return getKiroApiKeyCredentials() ?? getKiroCliCredentials();
+}
 
 export default function ompKiroProvider(pi: ExtensionAPI) {
   pi.registerProvider("kiro", {
@@ -19,7 +28,7 @@ export default function ompKiroProvider(pi: ExtensionAPI) {
       login: loginKiro,
       refreshToken: refreshKiroToken,
       getApiKey: (cred: OAuthCredentials) => cred.access,
-      getCliCredentials: getKiroCliCredentials,
+      getCliCredentials: resolveCliCredentials,
       modifyModels: (models: Model<Api>[], cred: OAuthCredentials) => {
         const apiRegion = resolveApiRegion((cred as KiroCredentials).region);
         const cachedKiro = getCachedModels(apiRegion);

@@ -23,7 +23,7 @@ import { parseKiroEvents } from "./event-parser.js";
 import { createAssistantMessageEventStream } from "./event-stream.js";
 import { addPlaceholderTools, HISTORY_LIMIT, HISTORY_LIMIT_CONTEXT_WINDOW, truncateHistory } from "./history.js";
 import { getKiroCliCredentials, getKiroCliCredentialsAllowExpired, saveKiroCliCredentials } from "./kiro-cli.js";
-import { forceRefreshKiroToken, type KiroCredentials } from "./oauth.js";
+import { forceRefreshKiroToken, getKiroCredentialsFromOptions, type KiroCredentials } from "./oauth.js";
 import {
   endpointForApiRegion,
   extractRegionFromEndpoint,
@@ -303,10 +303,20 @@ export function streamKiro(
       timestamp: Date.now(),
     };
     try {
+      // M4: KIRO_API_KEY — version-independent API-key auth (no kiro-cli DB, no
+      // OAuth device flow). Paid-tier credential (Pro/Pro+/Pro Max/Power). Sent
+      // verbatim as the Bearer token. Highest precedence after an explicit OMP
+      // apiKey.
+      const envApiKey = process.env.KIRO_API_KEY;
       let accessToken = options?.apiKey as string | undefined;
-      if (!accessToken) throw new Error("Kiro credentials not set. Run /login kiro or install kiro-cli.");
+      let usingApiKey = false;
+      if (!accessToken && envApiKey) {
+        accessToken = envApiKey;
+        usingApiKey = true;
+      }
+      if (!accessToken) throw new Error("Kiro credentials not set. Run /login kiro, install kiro-cli, or set KIRO_API_KEY.");
 
-      const optionCreds = (options as unknown as { credentials?: KiroCredentials })?.credentials;
+      const optionCreds = getKiroCredentialsFromOptions(options);
       const cliCreds = getKiroCliCredentials();
       const expiredCliCreds = getKiroCliCredentialsAllowExpired();
 
@@ -319,10 +329,13 @@ export function streamKiro(
 
       const cachedMeta = readAuthMeta(accessToken);
 
+      // API-key auth has no profileArn/region in the token — default to us-east-1
+      // and skip profileArn resolution.
       const requestedRegion =
         process.env.KIRO_API_REGION ||
         optionCreds?.region ||
         extractRegionFromProfileArn(optionCreds?.profileArn) ||
+        (usingApiKey ? "us-east-1" : undefined) ||
         cachedMeta?.apiRegion ||
         extractRegionFromProfileArn(cachedMeta?.profileArn) ||
         matchingCliCreds?.region ||
@@ -340,7 +353,7 @@ export function streamKiro(
       if (requestedRegion) {
         apiRegion = resolveApiRegion(requestedRegion);
         endpoint = endpointForApiRegion(apiRegion);
-        profileArn = profileArn || (await resolveProfileArn(accessToken, endpoint));
+        profileArn = usingApiKey ? undefined : (profileArn || (await resolveProfileArn(accessToken, endpoint)));
       } else {
         const detected = await autoDetectKiroApiRegion(accessToken);
         if (detected) {
@@ -350,7 +363,7 @@ export function streamKiro(
         } else {
           apiRegion = resolveApiRegion(extractRegionFromEndpoint(model.baseUrl));
           endpoint = endpointForApiRegion(apiRegion);
-          profileArn = await resolveProfileArn(accessToken, endpoint);
+          profileArn = usingApiKey ? undefined : (await resolveProfileArn(accessToken, endpoint));
         }
       }
 
@@ -650,8 +663,8 @@ export function streamKiro(
                 }
               }
 
-              // Otherwise: try token refresh
-              const optCreds = (options as unknown as { credentials?: KiroCredentials })?.credentials;
+              // Otherwise: try token refresh (skip for API-key auth — no refresh token)
+              const optCreds = usingApiKey ? undefined : getKiroCredentialsFromOptions(options);
               const cli = getKiroCliCredentials();
               const expiredCli = getKiroCliCredentialsAllowExpired();
               const candidates = [optCreds, cli, expiredCli].filter(
@@ -720,6 +733,10 @@ export function streamKiro(
         let textBlockIndex: number | null = null;
         let emittedToolCalls = 0;
         let sawAnyToolCalls = false;
+        // Parsed from the Kiro assistantResponseEvent's additive stopReason
+        // field. When present, it drives turn termination instead of the
+        // inferred heuristic below (M2).
+        let parsedStopReason: string | undefined;
         let currentToolCall: KiroToolCallState | null = null;
         const flushToolCall = () => {
           if (!currentToolCall) return;
@@ -778,6 +795,23 @@ export function streamKiro(
           resetIdle();
           for (const event of events) {
             switch (event.type) {
+              case "reasoning": {
+                // Emit reasoning content directly to pi's thinking output.
+                // reasoningContentEvent carries the model's native reasoning
+                // as a separate event type — NOT as inline <thinking> tags.
+                // Use emitReasoning() to bypass the tag parser and write
+                // directly to the thinking block.
+                if (model.reasoning && thinkingParser) {
+                  const { text, signature } = event.data;
+                  // signature is the trailing Anthropic-style thinking-block
+                  // signature; captured and applied to the thinking block on
+                  // end (M1 acceptance: "with the trailing signature attached").
+                  if (text || signature !== undefined) {
+                    thinkingParser.emitReasoning(text ?? "", signature);
+                  }
+                }
+                break;
+              }
               case "contextUsage": {
                 const pct = event.data.contextUsagePercentage;
                 output.usage.input = Math.round((pct / 100) * (model.contextWindow ?? 0));
@@ -790,19 +824,27 @@ export function streamKiro(
                 break;
               }
               case "content": {
-                if (event.data === lastContentData) continue;
-                lastContentData = event.data;
-                totalContent += event.data;
+                const contentData = event.data;
+                if (contentData === lastContentData) continue;
+                lastContentData = contentData;
+                totalContent += contentData;
                 if (thinkingParser) {
-                  thinkingParser.processChunk(event.data);
+                  thinkingParser.processChunk(contentData);
                 } else {
                   if (textBlockIndex === null) {
                     textBlockIndex = output.content.length;
                     output.content.push({ type: "text", text: "" });
                     stream.push({ type: "text_start", contentIndex: textBlockIndex, partial: output });
                   }
-                  (output.content[textBlockIndex] as TextContent).text += event.data;
-                  stream.push({ type: "text_delta", contentIndex: textBlockIndex, delta: event.data, partial: output });
+                  (output.content[textBlockIndex] as TextContent).text += contentData;
+                  stream.push({ type: "text_delta", contentIndex: textBlockIndex, delta: contentData, partial: output });
+                }
+                // Handle stopReason from content event (M2). Map Kiro's
+                // "END_TURN" to OMP "stop"; preserve other values. The field
+                // drives final turn-termination in the finalize step below.
+                if (event.stopReason) {
+                  parsedStopReason =
+                    event.stopReason === "END_TURN" ? "stop" : event.stopReason;
                 }
                 break;
               }
@@ -965,7 +1007,14 @@ export function streamKiro(
         // when all tool calls were skipped due to empty/unparseable input — that
         // combination (empty content + toolUse stop) causes pi's agent loop to
         // stall waiting for tool results that will never arrive.
-        if (!receivedContextUsage && emittedToolCalls === 0) {
+        // Honor a parsed Kiro stopReason (M2) when present; otherwise infer it.
+        // Tool-call presence always wins: a parsed "stop"/"END_TURN" with tool
+        // calls in the same turn must still terminate as "toolUse" so the agent
+        // loop awaits results. The length heuristic only applies when no usage
+        // event arrived and no tool calls were emitted.
+        if (parsedStopReason && emittedToolCalls === 0) {
+          output.stopReason = parsedStopReason as "stop" | "length" | "toolUse" | "error" | "aborted";
+        } else if (!receivedContextUsage && emittedToolCalls === 0) {
           output.stopReason = "length";
         } else {
           output.stopReason = emittedToolCalls > 0 ? "toolUse" : "stop";

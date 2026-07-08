@@ -127,4 +127,39 @@ describe("Feature 1: Extension Registration", () => {
       ]),
     );
   });
+
+  it("M4 — getCliCredentials prefers KIRO_API_KEY over kiro-cli DB", async () => {
+    const mod = await import("../src/index.js");
+    const { pi, registerProvider } = mockPi();
+    mod.default(pi);
+
+    const config = registerProvider.mock.calls[0][1];
+    const getCliCredentials = (config.oauth as { getCliCredentials: () => unknown }).getCliCredentials;
+
+    // Spy on the kiro-cli DB read and force it to return a token.
+    const kiroCliMod = await import("../src/kiro-cli.js");
+    const cliCreds = {
+      access: "cli-access-token",
+      refresh: "cli-refresh",
+      expires: Number.POSITIVE_INFINITY,
+      region: "eu-central-1",
+      authMethod: "idc" as const,
+      clientId: "c",
+      clientSecret: "s",
+    };
+    const cliSpy = vi.spyOn(kiroCliMod, "getKiroCliCredentials").mockReturnValue(cliCreds);
+
+    // With KIRO_API_KEY set, the env key wins.
+    process.env.KIRO_API_KEY = "ksk_precedence";
+    const fromApiKey = getCliCredentials();
+    expect((fromApiKey as { access: string }).access).toBe("ksk_precedence");
+
+    // Without it, falls back to the kiro-cli DB token.
+    delete process.env.KIRO_API_KEY;
+    const fromCli = getCliCredentials();
+    expect((fromCli as { access: string }).access).toBe("cli-access-token");
+
+    cliSpy.mockRestore();
+    delete process.env.KIRO_API_KEY;
+  });
 });

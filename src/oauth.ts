@@ -36,6 +36,38 @@ export interface KiroCredentials extends OAuthCredentials {
 }
 
 /**
+ * OMP passes the resolved {@link KiroCredentials} to streamSimple via an
+ * internal `credentials` field on SimpleStreamOptions that is not part of the
+ * public type. Reconstruct a fully-typed {@link KiroCredentials} from the
+ * runtime shape rather than casting an opaque object, so missing fields fail
+ * loudly instead of producing a silently-incomplete credential.
+ */
+export function getKiroCredentialsFromOptions(
+  options: unknown,
+): KiroCredentials | undefined {
+  if (!options || typeof options !== "object" || !("credentials" in options)) {
+    return undefined;
+  }
+  const creds = (options as { credentials?: unknown }).credentials;
+  if (!creds || typeof creds !== "object") return undefined;
+  const c = creds as Record<string, unknown>;
+  if (typeof c.access !== "string") return undefined;
+  return {
+    access: c.access,
+    refresh: typeof c.refresh === "string" ? c.refresh : "",
+    expires: typeof c.expires === "number" ? c.expires : 0,
+    region: typeof c.region === "string" ? c.region : "us-east-1",
+    authMethod: (c.authMethod === "idc" || c.authMethod === "desktop" ? c.authMethod : "idc") as
+      | "idc"
+      | "desktop",
+    clientId: typeof c.clientId === "string" ? c.clientId : "",
+    clientSecret: typeof c.clientSecret === "string" ? c.clientSecret : "",
+    profileArn: typeof c.profileArn === "string" ? c.profileArn : undefined,
+  };
+}
+
+
+/**
  * Login to Kiro using the specified method.
  *
  * - "auto": Use existing kiro-cli credentials if available (any method)

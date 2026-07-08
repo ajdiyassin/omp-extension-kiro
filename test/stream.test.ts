@@ -135,6 +135,65 @@ describe("Feature 9: Streaming Integration", () => {
     vi.unstubAllGlobals();
   });
 
+  describe("M4 — KIRO_API_KEY credential source", () => {
+    let kiroCliMod: typeof import("../src/kiro-cli.js");
+
+    beforeEach(async () => {
+      kiroCliMod = await import("../src/kiro-cli.js");
+    });
+
+    afterEach(() => {
+      delete process.env.KIRO_API_KEY;
+      vi.restoreAllMocks();
+    });
+
+    it("uses KIRO_API_KEY as Bearer token with us-east-1 when set and no other creds", async () => {
+      process.env.KIRO_API_KEY = "ksk_testkey123";
+      const getCredsSpy = vi.spyOn(kiroCliMod, "getKiroCliCredentials").mockReturnValue(undefined);
+      const getExpiredSpy = vi.spyOn(kiroCliMod, "getKiroCliCredentialsAllowExpired").mockReturnValue(undefined);
+
+      const mockFetch = mockFetchOk('{"content":"Hi"}{"contextUsagePercentage":5}');
+      vi.stubGlobal("fetch", mockFetch);
+
+      const stream = streamKiro(makeModel(), makeContext(), {});
+      const events = await collect(stream);
+
+      expect(mockFetch).toHaveBeenCalledOnce();
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toContain("runtime.us-east-1.kiro.dev");
+      expect(opts.headers.Authorization).toBe("Bearer ksk_testkey123");
+      expect(getCredsSpy).toHaveBeenCalled();
+
+      const done = events.find((e) => e.type === "done");
+      expect(done).toBeDefined();
+      vi.unstubAllGlobals();
+    });
+
+    it("takes precedence over kiro-cli DB credentials", async () => {
+      process.env.KIRO_API_KEY = "ksk_apikey_precedence";
+      // Even if kiro-cli has a valid token, the env key wins as the Bearer.
+      vi.spyOn(kiroCliMod, "getKiroCliCredentials").mockReturnValue({
+        access: "cli-access-token",
+        refresh: "cli-refresh",
+        expires: Number.POSITIVE_INFINITY,
+        region: "eu-central-1",
+        authMethod: "idc",
+        clientId: "c",
+        clientSecret: "s",
+      });
+
+      const mockFetch = mockFetchOk('{"content":"Hi"}{"contextUsagePercentage":5}');
+      vi.stubGlobal("fetch", mockFetch);
+
+      const stream = streamKiro(makeModel(), makeContext(), {});
+      await collect(stream);
+
+      const [, opts] = mockFetch.mock.calls[0];
+      expect(opts.headers.Authorization).toBe("Bearer ksk_apikey_precedence");
+      vi.unstubAllGlobals();
+    });
+  });
+
   describe("adaptive thinking in request body", () => {
     function bodyOf(mockFetch: ReturnType<typeof vi.fn>) {
       return JSON.parse(mockFetch.mock.calls[0][1].body);

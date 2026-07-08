@@ -8,6 +8,7 @@ import {
   isAdaptiveThinkingSupported,
   mapOmpEffortToKiroEffort,
 } from "../src/adaptive-thinking.js";
+import { applyAdaptivePayloadShape } from "../src/stream.js";
 
 describe("adaptive-thinking", () => {
   afterEach(() => {
@@ -168,6 +169,36 @@ describe("adaptive-thinking", () => {
       expect(buildKiroAdaptiveThinkingPayload("claude-haiku-4-5", "high")).toBeUndefined();
       expect(buildKiroAdaptiveThinkingPayload("auto", "xhigh")).toBeUndefined();
       expect(buildKiroAdaptiveThinkingPayload("qwen3-coder-next", "high")).toBeUndefined();
+    });
+  });
+  describe("M3 — payload matches kiro-cli default (top-level shape)", () => {
+    it("effort-only field-set at top level is byte-compatible with kiro-cli 2.11.1", () => {
+      // kiro-cli 2.11.1 sends `{ output_config: { effort } }` as the
+      // `additionalModelRequestFields` sibling of `conversationState`.
+      process.env.KIRO_ADAPTIVE_FIELDS = "effort-only";
+      const payload = buildKiroAdaptiveThinkingPayload("claude-opus-4-8", "xhigh");
+      expect(payload).toEqual({ output_config: { effort: "max" } });
+      // The request shape produced by applyAdaptivePayloadShape must match:
+      const request: Record<string, unknown> = {
+        conversationState: { currentMessage: { userInputMessage: {} } },
+      };
+      applyAdaptivePayloadShape(request, payload as never, "top-level-wrapper");
+      expect(request.additionalModelRequestFields).toEqual({ output_config: { effort: "max" } });
+      expect(request.conversationState).toBeDefined();
+    });
+
+    it("full field-set at top level is also valid (extension default)", () => {
+      const payload = buildKiroAdaptiveThinkingPayload("claude-opus-4-8", "xhigh");
+      expect(payload).toEqual({
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: "max" },
+        max_tokens: 128000,
+      });
+      const request: Record<string, unknown> = {
+        conversationState: { currentMessage: { userInputMessage: {} } },
+      };
+      applyAdaptivePayloadShape(request, payload as never, "top-level-wrapper");
+      expect(request.additionalModelRequestFields).toEqual(payload);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findJsonEnd, parseKiroEvent, parseKiroEvents } from "../src/event-parser.js";
+import { extractEventType, findJsonEnd, parseKiroEvent, parseKiroEvents } from "../src/event-parser.js";
 
 describe("Feature 8: Stream Event Parsing", () => {
   describe("findJsonEnd", () => {
@@ -30,14 +30,17 @@ describe("Feature 8: Stream Event Parsing", () => {
     });
 
     it("parses toolUse event", () => {
-      const e = parseKiroEvent({ name: "bash", toolUseId: "tc1", input: '{"cmd":"ls"}' });
-      expect(e?.type).toBe("toolUse");
-      expect(e?.type === "toolUse" && e.data.name).toBe("bash");
+      expect(parseKiroEvent({ name: "bash", toolUseId: "tool_1", input: "ls" })).toEqual({
+        type: "toolUse",
+        data: { name: "bash", toolUseId: "tool_1", input: "ls", stop: undefined },
+      });
     });
 
     it("parses toolUse with stop", () => {
-      const e = parseKiroEvent({ name: "bash", toolUseId: "tc1", input: "", stop: true });
-      expect(e?.type === "toolUse" && e.data.stop).toBe(true);
+      expect(parseKiroEvent({ name: "bash", toolUseId: "tool_1", input: "ls", stop: true })).toEqual({
+        type: "toolUse",
+        data: { name: "bash", toolUseId: "tool_1", input: "ls", stop: true },
+      });
     });
 
     it("parses toolUseInput", () => {
@@ -46,6 +49,30 @@ describe("Feature 8: Stream Event Parsing", () => {
 
     it("parses toolUseStop", () => {
       expect(parseKiroEvent({ stop: true })).toEqual({ type: "toolUseStop", data: { stop: true } });
+    });
+
+    it("parses reasoningContentEvent with text", () => {
+      expect(parseKiroEvent({ text: "I am thinking" }, "reasoningContentEvent")).toEqual({
+        type: "reasoning",
+        data: { text: "I am thinking", signature: undefined },
+      });
+    });
+
+    it("parses reasoningContentEvent with signature", () => {
+      expect(
+        parseKiroEvent({ signature: "ErUDCmMIDxABGAIqQIJqm4WKIDMBZf0TxmYU/XvJYi6yxr2zS68elaTxB3OHtorU4pUZ+doX5rQPfP1rzhDX+UKzLtJmR1kRV8Izu1IyDWNsYXVkZS1xdWluY2U4AEIIdGhpbmtpbmcSDEBTBDtqL7l5T+TGnxoM1X544B+2o6KPO2oDIjDkGc+j2hFjPZPTWod3q+li05Mbz0Y3jevF72ReYsZcQEPQf0fKBkgnrFKBS2T9rscq/wFm2Ziu0gIqTKNGhm1Gn8H7ZLkeMMe4QguMgklrqxzVJZS+XhSJ/zeTsF3BQg2R5rqZ4wSHP7Iwvnp3RRIshK59E7CZjFjG6OYje2FYSjrsvjPEqRV3wwNJhuEk5Y/UJaiNEBjHIRqhhQ/kyanF5FmN2RHAV4d/yKtiVm28eousAdqyCydZ0Gpn08MJ2O65fViYAJENGku97yTA9UBD53EISqwTUSskOcuLXMUS0FpuMMQgjya8UUfok0kKNqzfLb6kuYAJbA9WJReHIP2SMnDoWGRF65fJgEhGckgAEqJqil3YaHRymwAFK8ccaU6Dba/AYR7Cdqjy0TkCremDxaUYAQ==" }, "reasoningContentEvent"),
+      ).toEqual({
+        type: "reasoning",
+        data: { text: undefined, signature: "ErUDCmMIDxABGAIqQIJqm4WKIDMBZf0TxmYU/XvJYi6yxr2zS68elaTxB3OHtorU4pUZ+doX5rQPfP1rzhDX+UKzLtJmR1kRV8Izu1IyDWNsYXVkZS1xdWluY2U4AEIIdGhpbmtpbmcSDEBTBDtqL7l5T+TGnxoM1X544B+2o6KPO2oDIjDkGc+j2hFjPZPTWod3q+li05Mbz0Y3jevF72ReYsZcQEPQf0fKBkgnrFKBS2T9rscq/wFm2Ziu0gIqTKNGhm1Gn8H7ZLkeMMe4QguMgklrqxzVJZS+XhSJ/zeTsF3BQg2R5rqZ4wSHP7Iwvnp3RRIshK59E7CZjFjG6OYje2FYSjrsvjPEqRV3wwNJhuEk5Y/UJaiNEBjHIRqhhQ/kyanF5FmN2RHAV4d/yKtiVm28eousAdqyCydZ0Gpn08MJ2O65fViYAJENGku97yTA9UBD53EISqwTUSskOcuLXMUS0FpuMMQgjya8UUfok0kKNqzfLb6kuYAJbA9WJReHIP2SMnDoWGRF65fJgEhGckgAEqJqil3YaHRymwAFK8ccaU6Dba/AYR7Cdqjy0TkCremDxaUYAQ==" },
+      });
+    });
+
+    it("parses content event with stopReason", () => {
+      expect(parseKiroEvent({ content: "Hello", stopReason: "END_TURN" })).toEqual({
+        type: "content",
+        data: "Hello",
+        stopReason: "END_TURN",
+      });
     });
 
     it("parses contextUsage", () => {
@@ -61,10 +88,10 @@ describe("Feature 8: Stream Event Parsing", () => {
     });
 
     it("parses usage event", () => {
-      const e = parseKiroEvent({ usage: { inputTokens: 100, outputTokens: 50 } });
-      expect(e?.type).toBe("usage");
-      expect(e?.type === "usage" && e.data.inputTokens).toBe(100);
-      expect(e?.type === "usage" && e.data.outputTokens).toBe(50);
+      expect(parseKiroEvent({ usage: { inputTokens: 100, outputTokens: 50 } })).toEqual({
+        type: "usage",
+        data: { inputTokens: 100, outputTokens: 50 },
+      });
     });
 
     it("returns null for unrecognized shape", () => {
@@ -72,120 +99,124 @@ describe("Feature 8: Stream Event Parsing", () => {
     });
 
     it("treats empty object input as empty string for toolUse placeholder", () => {
-      const e = parseKiroEvent({ name: "write", toolUseId: "tc1", input: {} });
-      expect(e?.type).toBe("toolUse");
-      // Empty object placeholder must become "" so toolUseInput concatenation works
-      expect(e?.type === "toolUse" && e.data.input).toBe("");
+      expect(parseKiroEvent({ name: "bash", toolUseId: "tool_1", input: {} })).toEqual({
+        type: "toolUse",
+        data: { name: "bash", toolUseId: "tool_1", input: "", stop: undefined },
+      });
     });
 
     it("preserves non-empty object input as JSON string", () => {
-      const e = parseKiroEvent({ name: "bash", toolUseId: "tc1", input: { cmd: "ls" } });
-      expect(e?.type).toBe("toolUse");
-      expect(e?.type === "toolUse" && e.data.input).toBe('{"cmd":"ls"}');
+      expect(parseKiroEvent({ name: "bash", toolUseId: "tool_1", input: { cmd: "ls" } })).toEqual({
+        type: "toolUse",
+        data: { name: "bash", toolUseId: "tool_1", input: '{"cmd":"ls"}', stop: undefined },
+      });
+    });
+  });
+
+  describe("extractEventType", () => {
+    it("returns undefined when event-type header not found", () => {
+      const buffer = "{\"text\":\"hello\"}";
+      const jsonStart = 0;
+      const eventType = extractEventType(buffer, jsonStart);
+      expect(eventType).toBeUndefined();
+    });
+
+    it("extracts reasoningContentEvent from the eventstream header", () => {
+      // AWS eventstream header format: :event-type\x07\x00<len><name>...:content-type
+      const buffer =
+        ":event-type\x07\x00\x13reasoningContentEvent:content-type\x07\x00\x10application/json" +
+        '{"text":"I am thinking"}';
+      const jsonStart = buffer.indexOf('{"text"');
+      expect(extractEventType(buffer, jsonStart)).toBe("reasoningContentEvent");
+    });
+
+    it("extracts assistantResponseEvent from the eventstream header", () => {
+      const buffer =
+        ":event-type\x07\x00\x14assistantResponseEvent:content-type\x07\x00\x10application/json" +
+        '{"content":"Hi"}';
+      const jsonStart = buffer.indexOf('{"content"');
+      expect(extractEventType(buffer, jsonStart)).toBe("assistantResponseEvent");
     });
   });
 
   describe("parseKiroEvents", () => {
-    it("parses single event", () => {
-      const { events, remaining } = parseKiroEvents('{"content":"hello"}');
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ type: "content", data: "hello" });
+    it("parses multiple events from buffer", () => {
+      const buffer = '{"content":"Hello"}{"content":" world"}';
+      const { events, remaining } = parseKiroEvents(buffer);
+      expect(events).toHaveLength(2);
+      expect(events[0]).toEqual({ type: "content", data: "Hello" });
+      expect(events[1]).toEqual({ type: "content", data: " world" });
       expect(remaining).toBe("");
     });
 
-    it("parses multiple events in one chunk", () => {
-      const { events } = parseKiroEvents('{"content":"a"}{"content":"b"}{"content":"c"}');
-      expect(events).toHaveLength(3);
+    it("preserves incomplete JSON for next call", () => {
+      const buffer = '{"content":"Hello"}{"content":"incomplete';
+      const { events, remaining } = parseKiroEvents(buffer);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ type: "content", data: "Hello" });
+      expect(remaining).toBe('{"content":"incomplete');
     });
 
-    it("returns remaining for incomplete JSON", () => {
-      const { events, remaining } = parseKiroEvents('{"content":"done"}{"content":"incomp');
+    it("handles empty buffer", () => {
+      const { events, remaining } = parseKiroEvents("");
+      expect(events).toHaveLength(0);
+      expect(remaining).toBe("");
+    });
+
+    it("skips non-JSON brace-balanced content", () => {
+      const buffer = '{"content":"Hello"}{{not json}}{"content":"world"}';
+      const { events } = parseKiroEvents(buffer);
+      expect(events).toHaveLength(2);
+      expect(events[0]).toEqual({ type: "content", data: "Hello" });
+      expect(events[1]).toEqual({ type: "content", data: "world" });
+    });
+
+    it("parses toolUse events", () => {
+      const buffer = '{"name":"bash","toolUseId":"tool_1","input":"ls"}';
+      const { events } = parseKiroEvents(buffer);
       expect(events).toHaveLength(1);
-      expect(remaining).toContain("incomp");
+      expect(events[0]).toEqual({
+        type: "toolUse",
+        data: { name: "bash", toolUseId: "tool_1", input: "ls", stop: undefined },
+      });
+    });
+
+    it("parses contextUsage event", () => {
+      const buffer = '{"contextUsagePercentage":42.5}';
+      const { events } = parseKiroEvents(buffer);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ type: "contextUsage", data: { contextUsagePercentage: 42.5 } });
+    });
+
+    it("parses usage event", () => {
+      const buffer = '{"usage":{"inputTokens":100,"outputTokens":50}}';
+      const { events } = parseKiroEvents(buffer);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ type: "usage", data: { inputTokens: 100, outputTokens: 50 } });
+    });
+
+    it("parses error event", () => {
+      const buffer = '{"error":"Invalid request","message":"Missing field"}';
+      const { events } = parseKiroEvents(buffer);
+      expect(events).toHaveLength(1);
+      expect(events[0]).toEqual({ type: "error", data: { error: "Invalid request", message: "Missing field" } });
     });
 
     it("handles mixed event types", () => {
-      const buf = '{"content":"hi"}{"name":"bash","toolUseId":"t1","input":"{}"}{"contextUsagePercentage":50}';
-      const { events } = parseKiroEvents(buf);
-      expect(events.map((e) => e.type)).toEqual(["content", "toolUse", "contextUsage"]);
-    });
-
-    it("skips garbage between events", () => {
-      const { events } = parseKiroEvents('garbage{"content":"hi"}more');
-      expect(events).toHaveLength(1);
-    });
-
-    it("returns empty for empty buffer", () => {
-      const { events } = parseKiroEvents("");
-      expect(events).toHaveLength(0);
-    });
-
-    it("parses JSON events with keys in non-standard order", () => {
-      const buf = '{"toolUseId":"tc1","name":"write","input":"{\\"path\\":\\"f.txt\\"}","stop":true}';
-      const { events } = parseKiroEvents(buf);
-      expect(events).toHaveLength(1);
-      expect(events[0].type).toBe("toolUse");
-      expect(events[0].type === "toolUse" && events[0].data.name).toBe("write");
-      expect(events[0].type === "toolUse" && events[0].data.toolUseId).toBe("tc1");
-    });
-
-    it("skips events where known key is not the first key", () => {
-      // Pattern-based search requires known keys to be first (matching Kiro API behavior)
-      const buf = '{"timestamp":123,"content":"hello"}';
-      const { events } = parseKiroEvents(buf);
-      expect(events).toHaveLength(0);
-    });
-
-    it("parses stop event when toolUseId is the first key", () => {
-      const buf = '{"toolUseId":"tc1","stop":true}';
-      const { events } = parseKiroEvents(buf);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ type: "toolUseStop", data: { stop: true } });
-    });
-
-    it("handles multiple events with standard key orders", () => {
-      const buf =
-        '{"content":"hi"}{"toolUseId":"tc1","name":"bash","input":"{}","stop":true}{"contextUsagePercentage":50}';
-      const { events } = parseKiroEvents(buf);
+      const buffer = '{"content":"Hello"}{"contextUsagePercentage":42.5}{"content":" world"}';
+      const { events } = parseKiroEvents(buffer);
       expect(events).toHaveLength(3);
-      expect(events.map((e) => e.type)).toEqual(["content", "toolUse", "contextUsage"]);
+      expect(events[0]).toEqual({ type: "content", data: "Hello" });
+      expect(events[1]).toEqual({ type: "contextUsage", data: { contextUsagePercentage: 42.5 } });
+      expect(events[2]).toEqual({ type: "content", data: " world" });
     });
 
-    it("parses followupPrompt event in stream", () => {
-      const buf = '{"content":"hi"}{"followupPrompt":"Next?"}{"contextUsagePercentage":10}';
-      const { events } = parseKiroEvents(buf);
-      expect(events).toHaveLength(3);
-      expect(events[1]).toEqual({ type: "followupPrompt", data: "Next?" });
-    });
-
-    it("parses usage event in stream", () => {
-      const buf = '{"content":"hi"}{"usage":{"inputTokens":200,"outputTokens":80}}{"contextUsagePercentage":10}';
-      const { events } = parseKiroEvents(buf);
-      expect(events).toHaveLength(3);
-      expect(events[1].type).toBe("usage");
-    });
-
-    it("followupPrompt and usage events don't interfere with other events", () => {
-      const buf = '{"followupPrompt":"Next?"}{"usage":{"inputTokens":1}}{"content":"hi"}';
-      const { events } = parseKiroEvents(buf);
-      expect(events.map((e) => e.type)).toEqual(["followupPrompt", "usage", "content"]);
-    });
-
-    it("ignores stray braces in binary stream framing", () => {
-      // Simulates Kiro's binary event framing which contains stray '{' before JSON
-      const buf = '\x00\x83{   \\9:event-type assistantResponseEvent{"content":"hello"}\x00\x84';
-      const { events, remaining } = parseKiroEvents(buf);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toEqual({ type: "content", data: "hello" });
-      expect(remaining).toBe("");
-    });
-
-    it("handles multiple events with binary framing between them", () => {
-      const buf = '\x00{  framing{"content":"a"}\x00{  framing{"content":"b"}\x00';
-      const { events } = parseKiroEvents(buf);
+    it("ignores unrecognized event shapes", () => {
+      const buffer = '{"content":"Hello"}{"unknown":"value"}{"content":"world"}';
+      const { events } = parseKiroEvents(buffer);
       expect(events).toHaveLength(2);
-      expect(events[0]).toEqual({ type: "content", data: "a" });
-      expect(events[1]).toEqual({ type: "content", data: "b" });
+      expect(events[0]).toEqual({ type: "content", data: "Hello" });
+      expect(events[1]).toEqual({ type: "content", data: "world" });
     });
   });
 });

@@ -2,7 +2,8 @@
 // ABOUTME: Extracts typed events from raw buffered stream data.
 
 export type KiroStreamEvent =
-  | { type: "content"; data: string }
+  | { type: "content"; data: string; stopReason?: string }
+  | { type: "reasoning"; data: { text?: string; signature?: string } }
   | { type: "toolUse"; data: { name: string; toolUseId: string; input: string; stop?: boolean } }
   | { type: "toolUseInput"; data: { input: string } }
   | { type: "toolUseStop"; data: { stop: boolean } }
@@ -40,8 +41,28 @@ export function findJsonEnd(text: string, start: number): number {
   return -1;
 }
 
-export function parseKiroEvent(parsed: Record<string, unknown>): KiroStreamEvent | null {
-  if (parsed.content !== undefined) return { type: "content", data: parsed.content as string };
+export function parseKiroEvent(
+  parsed: Record<string, unknown>,
+  eventType?: string,
+): KiroStreamEvent | null {
+  if (parsed.content !== undefined) {
+    return {
+      type: "content",
+      data: parsed.content as string,
+      stopReason: parsed.stopReason as string | undefined,
+    };
+  }
+  // reasoningContentEvent: distinguished by event-type header, not JSON keys
+  // Both reasoning and assistantResponse can have {"text":...}, so we check eventType
+  if (eventType === "reasoningContentEvent") {
+    return {
+      type: "reasoning",
+      data: {
+        text: parsed.text as string | undefined,
+        signature: parsed.signature as string | undefined,
+      },
+    };
+  }
   if (parsed.name && parsed.toolUseId) {
     const input =
       typeof parsed.input === "string"
@@ -64,7 +85,7 @@ export function parseKiroEvent(parsed: Record<string, unknown>): KiroStreamEvent
   if (parsed.input !== undefined && !parsed.name) {
     return {
       type: "toolUseInput",
-      data: { input: typeof parsed.input === "string" ? parsed.input : JSON.stringify(parsed.input) },
+      data: { input: parsed.input as string },
     };
   }
   if (parsed.stop !== undefined && parsed.contextUsagePercentage === undefined)
@@ -73,15 +94,22 @@ export function parseKiroEvent(parsed: Record<string, unknown>): KiroStreamEvent
     return { type: "contextUsage", data: { contextUsagePercentage: parsed.contextUsagePercentage as number } };
   if (parsed.followupPrompt !== undefined) return { type: "followupPrompt", data: parsed.followupPrompt as string };
   if (parsed.error !== undefined || parsed.Error !== undefined) {
-    const error = (parsed.error || parsed.Error || "unknown") as string;
-    const message = (parsed.message || parsed.Message || parsed.reason) as string | undefined;
-    return { type: "error", data: { error: typeof error === "string" ? error : JSON.stringify(error), message } };
+    return {
+      type: "error",
+      data: {
+        error: (parsed.error || parsed.Error) as string,
+        message: parsed.message as string | undefined,
+      },
+    };
   }
   if (parsed.usage !== undefined) {
-    const u = parsed.usage as Record<string, unknown>;
+    const usage = parsed.usage as Record<string, unknown>;
     return {
       type: "usage",
-      data: { inputTokens: u.inputTokens as number | undefined, outputTokens: u.outputTokens as number | undefined },
+      data: {
+        inputTokens: usage.inputTokens as number | undefined,
+        outputTokens: usage.outputTokens as number | undefined,
+      },
     };
   }
   return null;
@@ -103,7 +131,26 @@ const EVENT_PATTERNS = [
   '{"error":',
   '{"Error":',
   '{"message":',
+  '{"text":', // reasoningContentEvent
+  '{"signature":', // reasoningContentEvent signature frame
 ];
+
+/**
+ * Extract the AWS eventstream event-type header from a binary frame.
+ * The header format is: :event-type\x07\x00<len><name>
+ * Returns the event-type name or undefined if not found.
+ */
+export function extractEventType(buffer: string, jsonStart: number): string | undefined {
+  // Look backwards from jsonStart to find the event-type header
+  // The pattern is: :event-type\x07\x00<len><name>
+  const headerPattern = /:event-type\x07\x00[\x00-\xff]([\x20-\x7e]{5,40}?)(?:\r|:content-type)/;
+  // Search in a reasonable window before the JSON (max 200 bytes back)
+  const searchStart = Math.max(0, jsonStart - 200);
+  const window = buffer.substring(searchStart, jsonStart);
+  const match = window.match(headerPattern);
+  return match ? match[1] : undefined;
+}
+
 
 function findNextEventStart(buffer: string, from: number): number {
   let earliest = -1;
@@ -130,7 +177,8 @@ export function parseKiroEvents(buffer: string): { events: KiroStreamEvent[]; re
 
     try {
       const parsed = JSON.parse(buffer.substring(jsonStart, jsonEnd + 1));
-      const event = parseKiroEvent(parsed);
+      const eventType = extractEventType(buffer, jsonStart);
+      const event = parseKiroEvent(parsed, eventType);
       if (event) events.push(event);
     } catch {
       /* skip brace-balanced but non-JSON content */

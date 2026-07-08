@@ -131,6 +131,28 @@ export function getKiroCliCredentialsAllowExpired(): KiroCredentials | undefined
   }
 }
 
+/**
+ * M4: Resolve a synthetic {@link KiroCredentials} from the `KIRO_API_KEY`
+ * environment variable (paid-tier API-key auth — no kiro-cli DB, no OAuth
+ * device flow). Returns undefined when the variable is unset. The key is sent
+ * verbatim as the Bearer token; region defaults to us-east-1 and no
+ * profileArn is required.
+ */
+export function getKiroApiKeyCredentials(): KiroCredentials | undefined {
+  const apiKey = process.env.KIRO_API_KEY;
+  if (!apiKey) return undefined;
+  return {
+    access: apiKey,
+    refresh: "",
+    expires: Number.POSITIVE_INFINITY,
+    region: "us-east-1",
+    authMethod: "idc",
+    clientId: "",
+    clientSecret: "",
+  };
+}
+
+
 function tryKiroCliToken(
   dbPath: string,
   tokenKey: string,
@@ -226,6 +248,9 @@ const TOKEN_KEY_BY_AUTH_METHOD: Record<KiroAuthMethod, string[]> = {
   idc: ["kirocli:odic:token", "codewhisperer:odic:token"],
   desktop: ["kirocli:social:token"],
 };
+
+/** Exported for tests (M5): confirms the v3 auth-store key set is unchanged. */
+export { TOKEN_KEY_BY_AUTH_METHOD };
 
 export function saveKiroCliCredentials(creds: KiroCredentials): void {
   const dbPath = getKiroCliDbPath();
