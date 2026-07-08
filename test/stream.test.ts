@@ -523,6 +523,70 @@ describe("Feature 9: Streaming Integration", () => {
     vi.unstubAllGlobals();
   });
 
+  it("native reasoningContentEvent: emits thinking_start → thinking_delta+ → thinking_end → text_start with signature applied", async () => {
+    // Build AWS eventstream-framed chunks for reasoningContentEvent.
+    // Header format: :event-type\x07\x00<len_byte><name>:content-type\x07\x00\x10application/json
+    const reasoningHeader = (name: string) => {
+      const nameLen = name.length;
+      return `:event-type\x07\x00${String.fromCharCode(nameLen)}${name}:content-type\x07\x00\x10application/json`;
+    };
+    const FAKE_SIG = "anthro-sig-abc123";
+    const mockFetch = mockFetchChunked([
+      // Frame 1: first reasoning text chunk
+      reasoningHeader("reasoningContentEvent") + '{"text":"Let me reason"}',
+      // Frame 2: second reasoning text chunk
+      reasoningHeader("reasoningContentEvent") + '{"text":" about this"}',
+      // Frame 3: signature frame (arrives on last reasoning frame per Kiro protocol)
+      reasoningHeader("reasoningContentEvent") + `{"signature":"${FAKE_SIG}"}`,
+      // Frame 4: content transition — thinking_end must precede text_start
+      reasoningHeader("assistantResponseEvent") + '{"content":"The answer is 42"}',
+      // Frame 5: usage / end marker
+      '{"contextUsagePercentage":10}',
+    ]);
+    vi.stubGlobal("fetch", mockFetch);
+
+    const stream = streamKiro(makeModel({ reasoning: true }), makeContext(), { apiKey: "tok" });
+    const events = await collect(stream);
+    const types = events.map((e) => e.type);
+
+    // All expected event types present
+    expect(types).toContain("thinking_start");
+    expect(types).toContain("thinking_delta");
+    expect(types).toContain("thinking_end");
+    expect(types).toContain("text_start");
+    expect(types).toContain("text_delta");
+    expect(types).toContain("text_end");
+
+    // thinking_end strictly before text_start (Bug 1 fix)
+    const thinkEnd = types.indexOf("thinking_end");
+    const textStart = types.indexOf("text_start");
+    expect(thinkEnd).toBeGreaterThanOrEqual(0);
+    expect(textStart).toBeGreaterThanOrEqual(0);
+    expect(thinkEnd).toBeLessThan(textStart);
+
+    // Accumulated reasoning text correct
+    const thinkDeltas = events
+      .filter((e) => e.type === "thinking_delta")
+      .map((e) => (e as { delta: string }).delta)
+      .join("");
+    expect(thinkDeltas).toBe("Let me reason about this");
+
+    // Accumulated answer text correct
+    const textDeltas = events
+      .filter((e) => e.type === "text_delta")
+      .map((e) => (e as { delta: string }).delta)
+      .join("");
+    expect(textDeltas).toBe("The answer is 42");
+
+    // Signature applied to thinking block (Bug 2 fix)
+    const done = events.find((e) => e.type === "done");
+    const msg = done?.type === "done" ? done.message : undefined;
+    const thinkingBlock = msg?.content.find((b) => b.type === "thinking");
+    expect(thinkingBlock?.type === "thinking" && thinkingBlock.thinkingSignature).toBe(FAKE_SIG);
+
+    vi.unstubAllGlobals();
+  });
+
   it("does not withhold the tail of plain text in reasoning mode", async () => {
     const mockFetch = mockFetchChunked(['{"content":"Hello world"}', '{"contextUsagePercentage":5}']);
     vi.stubGlobal("fetch", mockFetch);

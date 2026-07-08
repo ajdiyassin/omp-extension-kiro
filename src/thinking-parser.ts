@@ -40,6 +40,9 @@ export class ThinkingTagParser {
   private inThinking = false;
   private thinkingExtracted = false;
   private thinkingBlockIndex: number | null = null;
+  // True while native reasoningContentEvent frames are being accumulated;
+  // cleared by closeNativeReasoning() once the block is terminated.
+  private nativeReasoningOpen = false;
   // Captured from Kiro reasoningContentEvent frames; applied to the thinking
   // block on end so it survives being split across many stream frames.
   private pendingSignature: string | undefined;
@@ -84,6 +87,7 @@ export class ThinkingTagParser {
    */
   emitReasoning(text: string, signature?: string): void {
     if (signature !== undefined) this.pendingSignature = signature;
+    this.nativeReasoningOpen = true;
     this.emitThinking(text);
   }
 
@@ -94,7 +98,30 @@ export class ThinkingTagParser {
     }
   }
 
+  /**
+   * Close the native-reasoning block opened by emitReasoning(). Idempotent.
+   * Must be called:
+   *   1. At the reasoning→content transition (first content event in stream.ts)
+   *      so that thinking_end is emitted before text_start.
+   *   2. From finalize() as a safety net for streams that end without content.
+   */
+  closeNativeReasoning(): void {
+    if (!this.nativeReasoningOpen || this.thinkingBlockIndex === null) return;
+    this.nativeReasoningOpen = false;
+    this.applyPendingSignature();
+    const block = this.output.content[this.thinkingBlockIndex] as ThinkingContent;
+    this.stream.push({
+      type: "thinking_end",
+      contentIndex: this.thinkingBlockIndex,
+      content: block.thinking,
+      partial: this.output,
+    });
+  }
+
   finalize(): void {
+    // Close an open native-reasoning block (safety net for streams that end
+    // without a content event, e.g. reasoning-only responses).
+    this.closeNativeReasoning();
     if (this.textBuffer.length === 0) return;
     if (this.inThinking && this.thinkingBlockIndex !== null) {
       const block = this.output.content[this.thinkingBlockIndex] as ThinkingContent;

@@ -829,6 +829,10 @@ export function streamKiro(
                 lastContentData = contentData;
                 totalContent += contentData;
                 if (thinkingParser) {
+                  // Close the native-reasoning block before the first content
+                  // chunk so thinking_end is emitted before text_start (M1 fix).
+                  // Idempotent — no-op after the first call.
+                  thinkingParser.closeNativeReasoning();
                   thinkingParser.processChunk(contentData);
                 } else {
                   if (textBlockIndex === null) {
