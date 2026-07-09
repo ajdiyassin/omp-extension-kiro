@@ -8,6 +8,7 @@ describe("Feature 2: Model Definitions", () => {
       ["claude-opus-4-8", "claude-opus-4.8"],
       ["claude-opus-4-7", "claude-opus-4.7"],
       ["claude-opus-4-6", "claude-opus-4.6"],
+      ["claude-sonnet-5", "claude-sonnet-5"],
       ["claude-sonnet-4-6", "claude-sonnet-4.6"],
       ["claude-sonnet-4-5", "claude-sonnet-4.5"],
       ["claude-sonnet-4", "claude-sonnet-4"],
@@ -27,8 +28,8 @@ describe("Feature 2: Model Definitions", () => {
   });
 
   describe("KIRO_MODEL_IDS", () => {
-    it("contains 13 model IDs", () => {
-      expect(KIRO_MODEL_IDS.size).toBe(13);
+    it("contains 14 model IDs", () => {
+      expect(KIRO_MODEL_IDS.size).toBe(14);
     });
   });
 
@@ -61,6 +62,7 @@ describe("Feature 2: Model Definitions", () => {
 
     it("eu-central-1 includes Claude + documented OSS, excludes DeepSeek and undocumented models", () => {
       const ids = filterModelsByRegion(kiroModels, "eu-central-1").map((m) => m.id);
+      expect(ids).toContain("claude-sonnet-5");
       expect(ids).toContain("claude-sonnet-4-6");
       expect(ids).toContain("minimax-m2-1");
       expect(ids).not.toContain("deepseek-3-2");
@@ -73,8 +75,8 @@ describe("Feature 2: Model Definitions", () => {
   });
 
   describe("model catalog", () => {
-    it("defines 13 models", () => {
-      expect(kiroModels).toHaveLength(13);
+    it("defines 14 models", () => {
+      expect(kiroModels).toHaveLength(14);
     });
 
     it("claude-haiku-4-5 has reasoning=false", () => {
@@ -115,12 +117,12 @@ describe("Feature 2: Model Definitions", () => {
     });
   });
 
-  // The four adaptive models carry `thinking: ThinkingConfig` (anthropic-adaptive).
+  // The five adaptive models carry `thinking: ThinkingConfig` (anthropic-adaptive).
   // All other models must NOT carry adaptive thinking metadata.
   describe("adaptive thinking metadata", () => {
-    const ADAPTIVE = ["claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6"];
+    const ADAPTIVE = ["claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-5", "claude-sonnet-4-6"];
 
-    it("the four adaptive models have anthropic-adaptive thinking metadata", () => {
+    it("the five adaptive models have anthropic-adaptive thinking metadata", () => {
       for (const m of kiroModels.filter((x) => ADAPTIVE.includes(x.id))) {
         const t = (m as { thinking?: { mode?: string; efforts?: readonly string[]; effortMap?: Record<string, string>; supportsDisplay?: boolean } }).thinking;
         expect(t, `${m.id} thinking`).toBeDefined();

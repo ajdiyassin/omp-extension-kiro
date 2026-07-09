@@ -18,10 +18,11 @@ describe("adaptive-thinking", () => {
   });
 
   describe("isAdaptiveThinkingSupported", () => {
-    it("returns true for the 4 adaptive models", () => {
+    it("returns true for the 5 adaptive models", () => {
       expect(isAdaptiveThinkingSupported("claude-opus-4-8")).toBe(true);
       expect(isAdaptiveThinkingSupported("claude-opus-4-7")).toBe(true);
       expect(isAdaptiveThinkingSupported("claude-opus-4-6")).toBe(true);
+      expect(isAdaptiveThinkingSupported("claude-sonnet-5")).toBe(true);
       expect(isAdaptiveThinkingSupported("claude-sonnet-4-6")).toBe(true);
     });
     it("returns false for non-adaptive models", () => {
@@ -127,6 +128,18 @@ describe("adaptive-thinking", () => {
     });
   });
 
+  describe("mapOmpEffortToKiroEffort — sonnet-5 (5-tier)", () => {
+    it.each([
+      ["minimal", "low"],
+      ["low", "medium"],
+      ["medium", "high"],
+      ["high", "xhigh"],
+      ["xhigh", "max"],
+    ] as const)("OMP %s → Kiro %s", (omp, kiro) => {
+      expect(mapOmpEffortToKiroEffort("claude-sonnet-5", omp)).toBe(kiro);
+    });
+  });
+
   it("mapOmpEffortToKiroEffort returns undefined for non-adaptive model", () => {
     expect(mapOmpEffortToKiroEffort("claude-haiku-4-5", "high")).toBeUndefined();
     expect(mapOmpEffortToKiroEffort("auto", "xhigh")).toBeUndefined();
@@ -159,6 +172,26 @@ describe("adaptive-thinking", () => {
         output_config: { effort: "max" },
         max_tokens: 64000,
       });
+    });
+
+    it("sonnet-5 full payload at medium effort maps to Kiro high", () => {
+      expect(buildKiroAdaptiveThinkingPayload("claude-sonnet-5", "medium")).toEqual({
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: "high" },
+        max_tokens: 128000,
+      });
+    });
+
+    it("sonnet-5 full payload at high effort maps to Kiro xhigh", () => {
+      expect(buildKiroAdaptiveThinkingPayload("claude-sonnet-5", "high")).toEqual({
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: "xhigh" },
+        max_tokens: 128000,
+      });
+    });
+
+    it("sonnet-5 uses model default effort (medium → high) when effort is undefined", () => {
+      expect(buildKiroAdaptiveThinkingPayload("claude-sonnet-5", undefined)?.output_config.effort).toBe("high");
     });
 
     it("uses model default effort when reasoning is undefined (opus-4.8 → high)", () => {

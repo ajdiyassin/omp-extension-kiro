@@ -73,6 +73,7 @@ const KIRO_ADAPTIVE_MODELS: Record<string, ModelConfig> = {
   "claude-opus-4-8": { kiroModelId: "claude-opus-4.8", maxTokens: 128000, defaultOmpEffort: "medium", effortMap: FIVE_TIER },
   "claude-opus-4-7": { kiroModelId: "claude-opus-4.7", maxTokens: 128000, defaultOmpEffort: "high",   effortMap: FIVE_TIER },
   "claude-opus-4-6": { kiroModelId: "claude-opus-4.6", maxTokens: 64000,  defaultOmpEffort: "high",   effortMap: FOUR_TIER },
+  "claude-sonnet-5":   { kiroModelId: "claude-sonnet-5",   maxTokens: 128000, defaultOmpEffort: "medium", effortMap: FIVE_TIER },
   "claude-sonnet-4-6": { kiroModelId: "claude-sonnet-4.6", maxTokens: 64000, defaultOmpEffort: "high", effortMap: FOUR_TIER },
 };
 

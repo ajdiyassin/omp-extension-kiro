@@ -11,6 +11,7 @@ export const KIRO_MODEL_IDS = new Set([
   "claude-opus-4.8",
   "claude-opus-4.7",
   "claude-opus-4.6",
+  "claude-sonnet-5",
   "claude-sonnet-4.6",
   "claude-sonnet-4.5",
   "claude-sonnet-4",
@@ -249,6 +250,7 @@ const MODELS_BY_REGION: Record<string, Set<string>> = {
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
+    "claude-sonnet-5",
     "claude-sonnet-4-6",
     "claude-sonnet-4-5",
     "claude-sonnet-4",
@@ -261,10 +263,12 @@ const MODELS_BY_REGION: Record<string, Set<string>> = {
     "auto",
   ]),
   // API-verified 2026-04-14 (eu-west-1 IdC token), glm-5 removed 2026-05-05 (us-east-1 only)
+  // claude-sonnet-5 added 2026-07-08 (Kiro blog: us-east-1 + eu-central-1)
   "eu-central-1": new Set([
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
+    "claude-sonnet-5",
     "claude-sonnet-4-6",
     "claude-sonnet-4-5",
     "claude-sonnet-4",
@@ -353,7 +357,27 @@ export const kiroModels = [
     contextWindow: 1000000,
     maxTokens: 32768,
   },
-  // Claude Sonnet 4.6
+  // Claude Sonnet 5 — adaptive thinking on by default, 5-tier effort, 1M context, 128K output
+  {
+    id: "claude-sonnet-5",
+    name: "Claude Sonnet 5",
+    api: "kiro-api" as const,
+    provider: "kiro" as const,
+    baseUrl: BASE_URL,
+    reasoning: true,
+    thinking: {
+      mode: "anthropic-adaptive" as const,
+      efforts: ["minimal", "low", "medium", "high", "xhigh"] as const,
+      defaultLevel: "medium" as const,
+      effortMap: { minimal: "low", low: "medium", medium: "high", high: "xhigh", xhigh: "max" },
+      supportsDisplay: true,
+    },
+    input: ["text", "image"] as ("text" | "image")[],
+    cost: ZERO_COST,
+    contextWindow: 1000000,
+    maxTokens: 128000,
+    firstTokenTimeout: 180_000,
+  },
   {
     id: "claude-sonnet-4-6",
     name: "Claude Sonnet 4.6",
