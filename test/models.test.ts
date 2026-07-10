@@ -124,28 +124,26 @@ describe("Feature 2: Model Definitions", () => {
 
     it("the five adaptive models have anthropic-adaptive thinking metadata", () => {
       for (const m of kiroModels.filter((x) => ADAPTIVE.includes(x.id))) {
-        const t = (m as { thinking?: { mode?: string; efforts?: readonly string[]; effortMap?: Record<string, string>; supportsDisplay?: boolean } }).thinking;
-        expect(t, `${m.id} thinking`).toBeDefined();
-        expect(t?.mode).toBe("anthropic-adaptive");
-        expect(t?.supportsDisplay).toBe(true);
-        expect(t?.efforts).toEqual(["minimal", "low", "medium", "high", "xhigh"]);
-        expect(t?.effortMap?.xhigh).toBe("max");
+        expect(m.thinking, `${m.id} thinking`).toBeDefined();
+        expect(m.thinking?.mode).toBe("anthropic-adaptive");
+        expect(m.thinking?.supportsDisplay).toBe(true);
       }
     });
 
-    it("opus 4.8/4.7 use the 5-tier map (medium → high)", () => {
-      for (const id of ["claude-opus-4-8", "claude-opus-4-7"]) {
-        const m = kiroModels.find((x) => x.id === id) as { thinking?: { effortMap?: Record<string, string> } };
-        expect(m.thinking?.effortMap?.medium).toBe("high");
-        expect(m.thinking?.effortMap?.high).toBe("xhigh");
+    it("opus 4.8/4.7/sonnet-5 expose wire-exact 5-tier efforts (low..max)", () => {
+      for (const id of ["claude-opus-4-8", "claude-opus-4-7", "claude-sonnet-5"]) {
+        const m = kiroModels.find((x) => x.id === id);
+        expect(m?.thinking?.efforts).toEqual(["low", "medium", "high", "xhigh", "max"]);
+        // Wire-exact: no shifted effortMap on the model catalog entry.
+        expect(m?.thinking?.effortMap).toBeUndefined();
       }
     });
 
-    it("opus 4.6 / sonnet 4.6 use the 4-tier map (high → high)", () => {
+    it("opus 4.6 / sonnet 4.6 expose wire-exact 4-tier efforts (low..max, no xhigh)", () => {
       for (const id of ["claude-opus-4-6", "claude-sonnet-4-6"]) {
-        const m = kiroModels.find((x) => x.id === id) as { thinking?: { effortMap?: Record<string, string> } };
-        expect(m.thinking?.effortMap?.high).toBe("high");
-        expect(m.thinking?.effortMap?.low).toBe("low");
+        const m = kiroModels.find((x) => x.id === id);
+        expect(m?.thinking?.efforts).toEqual(["low", "medium", "high", "max"]);
+        expect(m?.thinking?.effortMap).toBeUndefined();
       }
     });
 

@@ -29,7 +29,7 @@
 // `effort-only` shape can be opted into via KIRO_ADAPTIVE_FIELDS=effort-only to
 // mirror kiro-cli exactly. See docs/kiro-cli-latest-migration-handoff.md M3.
 
-export type OmpEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type OmpEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type KiroEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export type KiroAdaptivePayload = {
@@ -53,20 +53,27 @@ type ModelConfig = {
   effortMap: Record<OmpEffort, KiroEffort>;
 };
 
+// OMP 16.4.0 wire-exact ladders: user-facing efforts match Kiro wire values 1:1.
+// `minimal` is not a Kiro/Anthropic adaptive tier — clamp down to `low`.
+// 5-tier (Opus 4.7+, Sonnet 5+): low | medium | high | xhigh | max
 const FIVE_TIER: Record<OmpEffort, KiroEffort> = {
   minimal: "low",
-  low: "medium",
-  medium: "high",
-  high: "xhigh",
-  xhigh: "max",
+  low: "low",
+  medium: "medium",
+  high: "high",
+  xhigh: "xhigh",
+  max: "max",
 };
 
+// 4-tier (Opus/Sonnet 4.6): low | medium | high | max — no xhigh wire tier.
+// Unsupported xhigh clamps up to max (nearest available top tier).
 const FOUR_TIER: Record<OmpEffort, KiroEffort> = {
   minimal: "low",
   low: "low",
   medium: "medium",
   high: "high",
   xhigh: "max",
+  max: "max",
 };
 
 const KIRO_ADAPTIVE_MODELS: Record<string, ModelConfig> = {

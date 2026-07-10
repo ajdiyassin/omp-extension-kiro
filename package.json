@@ -47,8 +47,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
-    "@oh-my-pi/pi-ai": "16.3.11",
-    "@oh-my-pi/pi-coding-agent": "16.3.11",
+    "@oh-my-pi/pi-ai": "16.4.0",
+    "@oh-my-pi/pi-coding-agent": "16.4.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

@@ -198,7 +198,7 @@ describe("Feature 9: Streaming Integration", () => {
     function bodyOf(mockFetch: ReturnType<typeof vi.fn>) {
       return JSON.parse(mockFetch.mock.calls[0][1].body);
     }
-    async function send(reasoning = "xhigh", id = "claude-opus-4-8") {
+    async function send(reasoning = "max", id = "claude-opus-4-8") {
       const mockFetch = mockFetchOk('{"content":"Hi"}{"contextUsagePercentage":5}');
       vi.stubGlobal("fetch", mockFetch);
       const stream = streamKiro(makeModel({ id, reasoning: true }), makeContext(), {
@@ -217,7 +217,7 @@ describe("Feature 9: Streaming Integration", () => {
     });
 
     it("default (enabled, full field-set) sends the full payload at additionalModelRequestFields", async () => {
-      const body = bodyOf(await send("xhigh"));
+      const body = bodyOf(await send("max"));
       expect(body.additionalModelRequestFields).toEqual({
         thinking: { type: "adaptive", display: "summarized" },
         output_config: { effort: "max" },
@@ -238,7 +238,7 @@ describe("Feature 9: Streaming Integration", () => {
 
     it("KIRO_ADAPTIVE_FIELDS=effort-only omits thinking and max_tokens", async () => {
       process.env.KIRO_ADAPTIVE_FIELDS = "effort-only";
-      expect(bodyOf(await send("xhigh")).additionalModelRequestFields).toEqual({ output_config: { effort: "max" } });
+      expect(bodyOf(await send("max")).additionalModelRequestFields).toEqual({ output_config: { effort: "max" } });
     });
 
     it("sonnet-4-6 high (4-tier) maps to effort high with full payload", async () => {
@@ -277,7 +277,7 @@ describe("Feature 9: Streaming Integration", () => {
       it("top-level-wrapper → request.additionalModelRequestFields", async () => {
         process.env.KIRO_ADAPTIVE_FIELDS = "effort-only";
         process.env.KIRO_ADAPTIVE_PAYLOAD_SHAPE = "top-level-wrapper";
-        const body = bodyOf(await send("xhigh"));
+        const body = bodyOf(await send("max"));
         expect(body.additionalModelRequestFields).toEqual(PAYLOAD);
         expect(body.output_config).toBeUndefined();
       });
@@ -285,7 +285,7 @@ describe("Feature 9: Streaming Integration", () => {
       it("top-level-direct → payload fields spread as request siblings", async () => {
         process.env.KIRO_ADAPTIVE_FIELDS = "effort-only";
         process.env.KIRO_ADAPTIVE_PAYLOAD_SHAPE = "top-level-direct";
-        const body = bodyOf(await send("xhigh"));
+        const body = bodyOf(await send("max"));
         expect(body.output_config).toEqual({ effort: "max" });
         expect(body.additionalModelRequestFields).toBeUndefined();
       });
@@ -293,7 +293,7 @@ describe("Feature 9: Streaming Integration", () => {
       it("user-input-message → userInputMessage.additionalModelRequestFields", async () => {
         process.env.KIRO_ADAPTIVE_FIELDS = "effort-only";
         process.env.KIRO_ADAPTIVE_PAYLOAD_SHAPE = "user-input-message";
-        const body = bodyOf(await send("xhigh"));
+        const body = bodyOf(await send("max"));
         const uim = body.conversationState.currentMessage.userInputMessage;
         expect(uim.additionalModelRequestFields).toEqual(PAYLOAD);
         expect(body.additionalModelRequestFields).toBeUndefined();
@@ -302,7 +302,7 @@ describe("Feature 9: Streaming Integration", () => {
       it("user-input-context → userInputMessageContext.additionalModelRequestFields", async () => {
         process.env.KIRO_ADAPTIVE_FIELDS = "effort-only";
         process.env.KIRO_ADAPTIVE_PAYLOAD_SHAPE = "user-input-context";
-        const body = bodyOf(await send("xhigh"));
+        const body = bodyOf(await send("max"));
         const uimc = body.conversationState.currentMessage.userInputMessage.userInputMessageContext;
         expect(uimc.additionalModelRequestFields).toEqual(PAYLOAD);
         expect(body.additionalModelRequestFields).toBeUndefined();

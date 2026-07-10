@@ -306,9 +306,9 @@ export const kiroModels = [
     reasoning: true,
     thinking: {
       mode: "anthropic-adaptive" as const,
-      efforts: ["minimal", "low", "medium", "high", "xhigh"] as const,
+      // OMP 16.4.0 wire-exact 5-tier ladder (low..max); no shifted mapping.
+      efforts: ["low", "medium", "high", "xhigh", "max"] as const,
       defaultLevel: "medium" as const,
-      effortMap: { minimal: "low", low: "medium", medium: "high", high: "xhigh", xhigh: "max" },
       supportsDisplay: true,
     },
     input: ["text", "image"] as ("text" | "image")[],
@@ -326,9 +326,8 @@ export const kiroModels = [
     reasoning: true,
     thinking: {
       mode: "anthropic-adaptive" as const,
-      efforts: ["minimal", "low", "medium", "high", "xhigh"] as const,
+      efforts: ["low", "medium", "high", "xhigh", "max"] as const,
       defaultLevel: "high" as const,
-      effortMap: { minimal: "low", low: "medium", medium: "high", high: "xhigh", xhigh: "max" },
       supportsDisplay: true,
     },
     input: ["text", "image"] as ("text" | "image")[],
@@ -347,9 +346,9 @@ export const kiroModels = [
     reasoning: true,
     thinking: {
       mode: "anthropic-adaptive" as const,
-      efforts: ["minimal", "low", "medium", "high", "xhigh"] as const,
+      // Wire-exact 4-tier ladder (low..max, no xhigh) for Opus/Sonnet 4.6.
+      efforts: ["low", "medium", "high", "max"] as const,
       defaultLevel: "high" as const,
-      effortMap: { minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "max" },
       supportsDisplay: true,
     },
     input: ["text", "image"] as ("text" | "image")[],
@@ -367,9 +366,8 @@ export const kiroModels = [
     reasoning: true,
     thinking: {
       mode: "anthropic-adaptive" as const,
-      efforts: ["minimal", "low", "medium", "high", "xhigh"] as const,
+      efforts: ["low", "medium", "high", "xhigh", "max"] as const,
       defaultLevel: "medium" as const,
-      effortMap: { minimal: "low", low: "medium", medium: "high", high: "xhigh", xhigh: "max" },
       supportsDisplay: true,
     },
     input: ["text", "image"] as ("text" | "image")[],
@@ -387,9 +385,8 @@ export const kiroModels = [
     reasoning: true,
     thinking: {
       mode: "anthropic-adaptive" as const,
-      efforts: ["minimal", "low", "medium", "high", "xhigh"] as const,
+      efforts: ["low", "medium", "high", "max"] as const,
       defaultLevel: "high" as const,
-      effortMap: { minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "max" },
       supportsDisplay: true,
     },
     input: ["text", "image"] as ("text" | "image")[],
