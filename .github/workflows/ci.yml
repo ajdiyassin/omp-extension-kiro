@@ -19,3 +19,6 @@ jobs:
       - run: npm run check
       - run: npm run lint
       - run: npm test
+      - run: npm run build
+      - name: Fail if committed bundle is stale
+        run: git diff --exit-code -- dist/index.js

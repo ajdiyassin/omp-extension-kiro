@@ -11,25 +11,49 @@ Fork of [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provide
 
 ## Install
 
-From the cloned repo directory:
+One command, no cloning or building required:
+
+```powershell
+omp plugin install github:ajdiyassin/omp-extension-kiro
+```
+
+The extension is self-contained — `dist/index.js` is committed and has no runtime dependencies beyond Node builtins.
+
+### Verify
+
+```powershell
+omp --list-models 2>&1 | Select-String -Pattern "kiro|Failed to load extension"
+```
+
+### Update
+
+```powershell
+omp plugin install github:ajdiyassin/omp-extension-kiro
+```
+
+### Uninstall
+
+```powershell
+omp plugin uninstall omp-provider-kiro
+```
+
+### Enable / Disable
+
+Installation enables the plugin automatically. To toggle manually:
+
+```powershell
+omp plugin enable omp-provider-kiro
+omp plugin disable omp-provider-kiro
+```
+
+### Development install (local clone)
+
+If you're working on the extension itself:
 
 ```powershell
 bun install
 bun run build
 omp plugin install .
-```
-
-Or from a parent directory:
-
-```powershell
-omp plugin install .\omp-provider-kiro
-```
-
-Or via tarball:
-
-```powershell
-npm pack
-omp plugin install .\omp-provider-kiro-0.1.0.tgz
 ```
 
 ## Authentication
