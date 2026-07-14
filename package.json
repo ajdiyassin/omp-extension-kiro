@@ -1,6 +1,6 @@
 {
   "name": "omp-provider-kiro",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "OMP-native provider extension for Kiro API",
   "type": "module",
   "license": "MIT",
@@ -47,8 +47,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.2",
-    "@oh-my-pi/pi-ai": "16.4.4",
-    "@oh-my-pi/pi-coding-agent": "16.4.4",
+    "@oh-my-pi/pi-ai": "^16.5.0",
+    "@oh-my-pi/pi-coding-agent": "^16.5.0",
     "esbuild": "^0.25.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
