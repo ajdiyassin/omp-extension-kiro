@@ -34,7 +34,12 @@ export interface SanitizedKiroModel {
   rateUnit?: string;
 }
 
-export interface SanitizedListAvailableModelsResponse {
+export interface SanitizedKiroModelCatalog {
+  defaultModel: { modelId: string };
+  models: SanitizedKiroModel[];
+}
+
+export interface SanitizedListAvailableModelsResponse extends SanitizedKiroModelCatalog {
   fixtureVersion: 1;
   source: {
     client: "kiro-cli";
@@ -239,10 +244,7 @@ function sanitizeModel(value: unknown): SanitizedKiroModel {
   return model;
 }
 
-export function sanitizeListAvailableModelsResponse(
-  value: unknown,
-  source: SanitizedListAvailableModelsResponse["source"],
-): SanitizedListAvailableModelsResponse {
+export function sanitizeKiroModelCatalog(value: unknown): SanitizedKiroModelCatalog {
   const raw = record(value, "top-level.object");
   exactKeys(raw, TOP_LEVEL_KEYS, "top-level");
   const defaultModelRaw = record(raw.defaultModel, "default-model.object");
@@ -253,22 +255,32 @@ export function sanitizeListAvailableModelsResponse(
   const ids = models.map((model) => model.modelId);
   if (new Set(ids).size !== ids.length) fail("models.duplicate-id");
   if (!ids.includes(defaultModelId)) fail("default-model.missing");
+  const catalog = { defaultModel: { modelId: defaultModelId }, models };
+  assertSanitizedCatalogSafe(catalog);
+  return catalog;
+}
 
+export function sanitizeListAvailableModelsResponse(
+  value: unknown,
+  source: SanitizedListAvailableModelsResponse["source"],
+): SanitizedListAvailableModelsResponse {
+  const catalog = sanitizeKiroModelCatalog(value);
   const fixture: SanitizedListAvailableModelsResponse = {
     fixtureVersion: 1,
     source,
-    defaultModel: { modelId: defaultModelId },
-    models,
+    ...catalog,
   };
-  assertSanitizedFixtureSafe(fixture);
+  assertSanitizedCatalogSafe(fixture);
   return fixture;
 }
 
-export function assertSanitizedFixtureSafe(value: SanitizedListAvailableModelsResponse): void {
+export function assertSanitizedCatalogSafe(value: unknown): void {
   const serialized = JSON.stringify(value);
   const forbidden = [
     /arn:aws/i,
     /bearer\s+[A-Za-z0-9._~-]+/i,
+    /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
+    /(?<![A-Za-z0-9_~+/=.-])[A-Za-z0-9_~+/=.-]{64,}(?![A-Za-z0-9_~+/=.-])/,
     /(?:access|refresh)[_-]?token/i,
     /profile[_-]?arn/i,
     /account[_-]?id/i,
@@ -277,4 +289,8 @@ export function assertSanitizedFixtureSafe(value: SanitizedListAvailableModelsRe
     /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
   ];
   if (forbidden.some((pattern) => pattern.test(serialized))) fail("fixture.forbidden-value");
+}
+
+export function assertSanitizedFixtureSafe(value: SanitizedListAvailableModelsResponse): void {
+  assertSanitizedCatalogSafe(value);
 }

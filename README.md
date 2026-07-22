@@ -1,6 +1,6 @@
 # omp-provider-kiro
 
-OMP-native provider extension for the [Kiro](https://kiro.dev) API — Claude Opus/Sonnet/Haiku (with official adaptive thinking on Opus 4.8/4.7/4.6 and Sonnet 4.6), plus DeepSeek, MiniMax, GLM, and Qwen.
+OMP-native provider extension for the [Kiro](https://kiro.dev) API. Models and capabilities are discovered live from Kiro's `ListAvailableModels` endpoint, including Claude adaptive thinking and GPT reasoning controls when advertised by each model's schema.
 
 Fork of [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro), converted to a self-contained OMP extension with no runtime dependency on `@earendil-works/*` or OMP TUI internals.
 
@@ -11,13 +11,11 @@ Fork of [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provide
 
 ## Install
 
-One command, no cloning or building required:
-
 ```powershell
 omp plugin install github:ajdiyassin/omp-extension-kiro
 ```
 
-The extension is self-contained — `dist/index.js` is committed and has no runtime dependencies beyond Node builtins.
+The extension is self-contained: `dist/index.js` is committed and has no runtime dependencies beyond Node builtins.
 
 ### Verify
 
@@ -25,30 +23,21 @@ The extension is self-contained — `dist/index.js` is committed and has no runt
 omp --list-models 2>&1 | Select-String -Pattern "kiro|Failed to load extension"
 ```
 
-### Update
+### Update or uninstall
 
 ```powershell
 omp plugin install github:ajdiyassin/omp-extension-kiro
-```
-
-### Uninstall
-
-```powershell
 omp plugin uninstall omp-provider-kiro
 ```
 
-### Enable / Disable
-
-Installation enables the plugin automatically. To toggle manually:
+Installation enables the plugin automatically. Toggle it manually with:
 
 ```powershell
 omp plugin enable omp-provider-kiro
 omp plugin disable omp-provider-kiro
 ```
 
-### Development install (local clone)
-
-If you're working on the extension itself:
+### Development install
 
 ```powershell
 bun install
@@ -60,14 +49,23 @@ omp plugin install .
 
 ### Recommended: Kiro CLI credential reuse
 
-If Kiro CLI is installed and logged in, OMP automatically reuses credentials — no `/login` needed.
+If Kiro CLI is installed and logged in, the extension reuses its valid local bearer for discovery and streaming; no separate `/login` is required.
 
 ```powershell
 kiro-cli whoami
 omp
 ```
 
-### Manual login
+### API key
+
+Set `KIRO_API_KEY` to use paid-tier API-key authentication. API keys do not require a profile ARN and default to `us-east-1`; override routing with `KIRO_API_REGION` when needed.
+
+```powershell
+$env:KIRO_API_KEY = "<your-key>"
+omp
+```
+
+### Manual OAuth login
 
 ```text
 /login kiro
@@ -77,80 +75,105 @@ Prompt: `Paste IAM Identity Center URL, or blank for Builder ID`
 
 - Blank → AWS Builder ID device-code flow
 - URL → IAM Identity Center with auto-region detection
+- Google/GitHub → delegated to Kiro CLI social login
 
-### Supported auth methods
+## Dynamic models
 
-- AWS Builder ID (device code)
-- IAM Identity Center / SSO (device code with region probing)
-- Google / GitHub (via `kiro-cli login --license free`)
-
-## Usage
+Use `/model` and select the `kiro` provider. Kiro's `auto` model is normally the default entry:
 
 ```text
 /model kiro/auto
 ```
 
-Available models: `claude-opus-4-8`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`, `deepseek-3-2`, `minimax-m2-5`, `minimax-m2-1`, `glm-5`, `qwen3-coder-next`, `auto`
+The extension does not maintain a model allowlist. It asks Kiro for the models available to the current credential/profile and preserves the returned IDs exactly. Examples from the sanitized Kiro CLI 2.13.1 fixture include:
 
-## Adaptive thinking
+```text
+kiro/claude-sonnet-5
+kiro/claude-opus-4.8
+kiro/gpt-5.6-sol
+kiro/deepseek-3.2
+kiro/auto
+```
 
-Reasoning for the supported Claude models uses Kiro's official **adaptive-thinking** fields,
-sent in the request's top-level `additionalModelRequestFields`:
+This is important for IDs such as `gpt-5.6-sol`: numeric dots are not rewritten. A small explicit alias map remains only for selectors emitted by older extension releases, such as `claude-opus-4-8` → `claude-opus-4.8`.
 
-- `thinking.type = adaptive`, `thinking.display = summarized`
-- `output_config.effort` = reasoning depth (`low | medium | high | xhigh | max`)
-- `max_tokens` = total output cap (thinking + text + tool calls), **not** a thinking budget
+OMP owns the discovery lifecycle:
 
-OMP thinking levels (set via the `kiro/<model>:<level>` selector or model roles) are mapped to
-Kiro effort per model:
+- 15-second extension discovery timeout
+- 24-hour SQLite model cache
+- Background startup refresh
+- Provider refresh from `/model`
+- Cached-catalog retention when a refresh fails
 
-| OMP level | Opus 4.8 / 4.7 | Opus 4.6 / Sonnet 4.6 |
-|-----------|----------------|------------------------|
-| minimal   | low            | low                    |
-| low       | medium         | low                    |
-| medium    | high           | medium                 |
-| high      | xhigh          | high                   |
-| xhigh     | max            | max                    |
+A first discovery requires `KIRO_API_KEY`, a valid Kiro CLI session, or credentials saved by `/login kiro`.
 
-Adaptive thinking is supported only on **Opus 4.8, Opus 4.7, Opus 4.6, and Sonnet 4.6**
-(`max_tokens` caps: 128000 for Opus 4.8/4.7, 64000 for Opus 4.6 / Sonnet 4.6). All other
-models work as plain Kiro models and receive no adaptive fields. It is enabled by default
-and sends the full payload at the request's top-level `additionalModelRequestFields`.
+## Reasoning and adaptive thinking
 
-Override env vars (kill-switch + debugging; every combination below is live-verified):
+Reasoning controls are derived from each live `additionalModelRequestFieldsSchema`, not from model IDs. Schema-less models receive no configurable reasoning fields; this does not claim that they cannot reason internally.
 
-| Variable | Default | Values |
-|----------|---------|--------|
-| `KIRO_ADAPTIVE_THINKING` | enabled | `0`/`false` disables all adaptive fields |
-| `KIRO_ADAPTIVE_FIELDS` | `full` | `full` = `thinking`+`output_config`+`max_tokens`; `effort-only` = just `output_config.effort` |
-| `KIRO_ADAPTIVE_PAYLOAD_SHAPE` | `top-level-wrapper` | `top-level-wrapper`, `top-level-direct`, `user-input-message`, `user-input-context` |
+### Claude adaptive thinking
 
-> Note: the Kiro runtime validates `userInputMessageContext.envState.operatingSystem` against
-> `windows`/`macos`/`linux`. Sending the raw Node `process.platform` (e.g. `win32`) is rejected
-> with `400 REQUEST_BODY_INVALID`; the extension maps it to the correct value.
+For models advertising Anthropic adaptive thinking, requests use:
+
+```json
+{
+  "thinking": { "type": "adaptive", "display": "summarized" },
+  "output_config": { "effort": "high" },
+  "max_tokens": 128000
+}
+```
+
+Supported effort tiers and defaults come from Kiro's live schema. The 2.13.1 fixture reports:
+
+| Model | Efforts | Kiro default | Combined `max_tokens` cap |
+|---|---|---:|---:|
+| Claude Sonnet 5 | low, medium, high, xhigh, max | high | 128,000 |
+| Claude Opus 4.8 | low, medium, high, xhigh, max | high | 128,000 |
+| Claude Opus 4.7 | low, medium, high, xhigh, max | xhigh | 128,000 |
+| Claude Opus 4.6 | low, medium, high, max | high | 64,000 |
+| Claude Sonnet 4.6 | low, medium, high, max | high | 64,000 |
+
+OMP `minimal` maps to the lowest advertised Claude tier. If OMP requests an unsupported intermediate tier, it clamps upward to the next supported tier (`xhigh` → `max` on a four-tier model).
+
+`max_tokens` is one hard ceiling for **internal thinking plus visible text/tool-call output**. It is not a separate thinking budget. For Sonnet 5, Kiro's generic catalog simultaneously reports `tokenLimits.maxOutputTokens: 64000` while its model-specific adaptive schema accepts `max_tokens` through 128,000. The extension uses the schema maximum as the combined adaptive request cap; it does not promise 128K of visible text.
+
+### GPT reasoning
+
+Models advertising Kiro's GPT reasoning schema use:
+
+```json
+{
+  "reasoning": {
+    "mode": "standard",
+    "effort": "high"
+  }
+}
+```
+
+OMP `minimal` maps to GPT `none`; other advertised levels are preserved. Kiro's separate `pro` mode is not exposed yet because OMP's thinking selector has no second mode control.
+
+### Compatibility/debugging overrides
+
+| Variable | Default | Behavior |
+|---|---|---|
+| `KIRO_ADAPTIVE_THINKING` | enabled | `0`/`false` disables Claude adaptive fields; GPT reasoning is unaffected |
+| `KIRO_ADAPTIVE_FIELDS` | `full` | Claude only: `full` or `effort-only` |
+| `KIRO_ADAPTIVE_PAYLOAD_SHAPE` | `top-level-wrapper` | `top-level-wrapper`, `top-level-direct`, `user-input-message`, or `user-input-context` |
+
+The Kiro runtime accepts `windows`, `macos`, or `linux` for `envState.operatingSystem`; the extension maps Node's `win32` value to `windows`.
 
 ## API endpoints
 
-This extension targets the current Kiro API (matching Kiro CLI 2.6.x):
+The extension follows the current Kiro management/runtime API used by the captured Kiro CLI 2.13.1 behavior:
 
-- Chat (streaming): `https://runtime.{region}.kiro.dev/` — `GenerateAssistantResponse`
-- Models / profile: `https://management.{region}.kiro.dev/` — `ListAvailableModels`, `GetProfile`, `ListAvailableProfiles`
+- Streaming: `https://runtime.{region}.kiro.dev/` — `GenerateAssistantResponse`
+- Models/profile: `https://management.{region}.kiro.dev/` — `ListAvailableModels`, `ListAvailableProfiles`
 
-`{region}` is `us-east-1` or `eu-central-1` (auto-detected from your credentials). The legacy
-`q.{region}.amazonaws.com` CodeWhisperer endpoint is no longer used.
+`{region}` is derived from the validated OAuth profile or API-key configuration. `us-east-1` and `eu-central-1` are bootstrap regions when profile discovery has no routing hint; they are not an allowlist, so a valid future profile region passes through unchanged. OAuth profile identifiers remain in memory and are never written to the model fixture. The legacy `q.{region}.amazonaws.com` endpoint is not used for requests.
 
 ## Cross-provider session compatibility
 
-When resuming an OMP session created by another provider, the Kiro provider normalizes foreign
-tool-call IDs to Kiro-compatible IDs while preserving tool-call/tool-result pairing. The stored
-OMP session is not modified.
-
-Kiro requires tool-use IDs to match `^[a-zA-Z0-9_-]+$`. Other providers (e.g. Fireworks/Kimi,
-which emits IDs like `functions.find:4`) use characters Kiro rejects with
-`ValidationException / TOOL_SCHEMA_INVALID`. The provider rewrites such IDs to a deterministic
-`call_<hash>` form only while serializing the outgoing Kiro request — the same normalized value
-is used for both a tool call and its matching result, so pairing is preserved. Valid Kiro IDs pass
-through unchanged. Set `KIRO_DEBUG=1` to log the `tool_ids.normalized` mappings for a request.
+Kiro requires tool-use IDs to match `^[a-zA-Z0-9_-]+$`. When resuming sessions from providers that emit other characters, the extension rewrites IDs to deterministic `call_<hash>` values only while serializing the outgoing request. Tool-call/result pairing is preserved and stored OMP sessions are not modified. Set `KIRO_DEBUG=1` to inspect normalization diagnostics.
 
 ## Windows Kiro CLI DB paths
 
@@ -159,30 +182,43 @@ The extension checks both locations:
 1. `%LOCALAPPDATA%\Kiro-Cli\data.sqlite3` (newer installations)
 2. `%APPDATA%\kiro-cli\data.sqlite3` (older installations)
 
-No symlinks or junctions required.
+No symlinks or junctions are required.
 
 ## Architecture
 
-- **Self-contained bundle** — `dist/index.js` bundles all runtime deps. Only `node:*` imports at runtime.
-- **Type-only OMP imports** — `@oh-my-pi/pi-ai` and `@oh-my-pi/pi-coding-agent` are dev-only.
-- **No TUI dependency** — Login uses OMP's built-in prompt mechanism.
+- **OMP-native discovery** — `fetchDynamicModels` plus OMP's SQLite cache and `/model` refresh.
+- **Fail-closed management parsing** — unknown response fields/schema families reject a refresh rather than publishing a partial catalog.
+- **Canonical thinking metadata** — Kiro schemas are converted to OMP `thinking` metadata so controls survive cache/restart.
+- **Self-contained bundle** — `dist/index.js` bundles runtime dependencies; only `node:*` imports remain external.
+- **Type-only OMP imports** — OMP packages are development dependencies.
+- **No TUI dependency** — login uses OMP's built-in prompt mechanism.
 
 ## Development
 
 ```powershell
 bun install
-bun run check     # TypeScript type check
-bun run test      # Run all tests (297 tests)
-bun run build     # Build dist/index.js
+bun run check
+bun run test
+bun run build
 ```
+
+Capture a new identity-free fixture only when intentionally updating discovery research:
+
+```powershell
+bun run probe:models
+```
+
+The probe never writes request headers, bearer/refresh tokens, profile identifiers, account identifiers, emails, ARNs, or machine paths.
 
 ## Troubleshooting
 
-### Check if the extension loaded
+### Verify credentials
 
 ```powershell
-omp --list-models 2>&1 | Select-String -Pattern "kiro|Failed to load extension"
+kiro-cli whoami
 ```
+
+If the provider has no models on first install, authenticate and refresh the Kiro provider from `/model`. A failed refresh should leave OMP's previous cached catalog available.
 
 ### Clean reinstall
 
@@ -192,27 +228,22 @@ Remove-Item "$env:USERPROFILE\.omp\plugins\node_modules\omp-provider-kiro" -Recu
 omp plugin install .
 ```
 
-### Clean old upstream plugin
+### Remove the old upstream plugin
 
 ```powershell
 omp plugin uninstall pi-provider-kiro
 Remove-Item "$env:USERPROFILE\.omp\plugins\node_modules\pi-provider-kiro" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
-### Verify credentials
-
-```powershell
-kiro-cli whoami
-```
-
 ## Differences from upstream
 
-| Feature | upstream (pi-provider-kiro) | this fork (omp-provider-kiro) |
-|---------|---------------------------|-------------------------------|
-| Package imports | `@earendil-works/*` externalized | Self-contained bundle, no externals |
-| Login UI | Custom TUI (SelectList, Input) | Simple prompt fallback |
-| Windows DB path | `%APPDATA%` only | `%LOCALAPPDATA%` + `%APPDATA%` fallback |
-| Build output | Relies on PI runtime resolution | Fully bundled ESM, node:* only |
+| Feature | upstream `pi-provider-kiro` | this extension |
+|---|---|---|
+| Models | Maintained catalog | Live Kiro discovery with OMP cache |
+| Package imports | `@earendil-works/*` externalized | Self-contained bundle |
+| Login UI | Custom TUI | OMP prompt fallback |
+| Windows DB path | `%APPDATA%` only | `%LOCALAPPDATA%` + `%APPDATA%` |
+| Build output | Relies on PI runtime resolution | Fully bundled ESM |
 | OMP manifest | `pi.extensions` only | `omp.extensions` + `pi.extensions` |
 
 ## License

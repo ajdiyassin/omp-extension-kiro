@@ -1,5 +1,8 @@
 # Spec: Add Claude Sonnet 5 to `omp-provider-kiro`
 
+> **Historical specification:** model-ID lists and static catalog instructions here are superseded by OMP-native `ListAvailableModels` discovery. See `README.md`, `AGENTS.md`, and `docs/kiro-model-discovery-research.md` for the current architecture.
+
+
 Status: DRAFT — research complete, not implemented.
 Author: research task, 2026-07-08.
 Scope: add the `claude-sonnet-5` model to the Kiro provider extension, wired for

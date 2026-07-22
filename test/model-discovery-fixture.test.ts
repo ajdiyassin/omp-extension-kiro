@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertSanitizedFixtureSafe,
   type SanitizedListAvailableModelsResponse,
+  sanitizeKiroModelCatalog,
   sanitizeListAvailableModelsResponse,
 } from "../src/model-discovery-fixture.js";
 
@@ -92,6 +93,16 @@ describe("sanitized ListAvailableModels fixture", () => {
     ["identity-bearing text", response(model({ description: "contact test@example.com" }))],
   ])("rejects %s", (_label, value) => {
     expect(() => sanitizeListAvailableModelsResponse(value, source)).toThrow("Unsafe ListAvailableModels response");
+  });
+
+  it.each([
+    ["email", "contact test@example.com"],
+    ["JWT bearer", "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJwcml2YXRlIn0.signature_value_123456"],
+    ["opaque bearer", "A9b8C7d6E5f4G3h2J1k0L9m8N7p6Q5r4S3t2U1v0W9x8Y7z6A5b4C3d2E1f0G9h8"],
+  ])("rejects identity-bearing %s values from the runtime catalog path", (_label, identityValue) => {
+    expect(() => sanitizeKiroModelCatalog(response(model({ modelName: identityValue })))).toThrow(
+      "fixture.forbidden-value",
+    );
   });
 
   it("rejects duplicate IDs and a missing default model", () => {

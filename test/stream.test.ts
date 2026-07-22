@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import type {
   Api,
   AssistantMessage,
@@ -10,6 +12,10 @@ import type {
   ToolResultMessage,
 } from "@oh-my-pi/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearAuthMeta } from "../src/auth-meta.js";
+
+import { mapKiroModelCatalog } from "../src/model-discovery.js";
+import type { SanitizedListAvailableModelsResponse } from "../src/model-discovery-fixture.js";
 import { capacityRetryConfig, retryConfig } from "../src/retry.js";
 import { assertValidKiroToolUseIds, resetProfileArnCache, streamKiro } from "../src/stream.js";
 import type { KiroHistoryEntry } from "../src/transform.js";
@@ -38,6 +44,18 @@ function makeModel(overrides?: Partial<Model<Api>>): Model<Api> {
     maxTokens: 65536,
     ...overrides,
   };
+}
+
+const discoveredModels = mapKiroModelCatalog(
+  JSON.parse(
+    readFileSync("test/fixtures/kiro-list-available-models-2.13.1.json", "utf-8"),
+  ) as SanitizedListAvailableModelsResponse,
+);
+
+function makeDiscoveredModel(id: string): Model<Api> {
+  const discovered = discoveredModels.find((model) => model.id === id);
+  if (!discovered) throw new Error(`fixture model missing: ${id}`);
+  return makeModel({ ...discovered, provider: "kiro", baseUrl: "https://runtime.us-east-1.kiro.dev/" });
 }
 
 function makeContext(userMsg = "Hello"): Context {
@@ -92,6 +110,10 @@ describe("Feature 9: Streaming Integration", () => {
   });
 
   it("emits error when no credentials provided", async () => {
+    const kiroCli = await import("../src/kiro-cli.js");
+    vi.spyOn(kiroCli, "getKiroCliSocialToken").mockReturnValue(undefined);
+    vi.spyOn(kiroCli, "getKiroCliCredentials").mockReturnValue(undefined);
+    vi.spyOn(kiroCli, "getKiroCliCredentialsAllowExpired").mockReturnValue(undefined);
     const stream = streamKiro(makeModel(), makeContext(), {});
     const events = await collect(stream);
     const error = events.find((e) => e.type === "error");
@@ -190,18 +212,43 @@ describe("Feature 9: Streaming Integration", () => {
 
       const [, opts] = mockFetch.mock.calls[0];
       expect(opts.headers.Authorization).toBe("Bearer ksk_apikey_precedence");
+
       vi.unstubAllGlobals();
     });
+  });
+
+  it("reuses a valid Kiro CLI bearer when OMP supplies no API key", async () => {
+    const kiroCli = await import("../src/kiro-cli.js");
+    vi.spyOn(kiroCli, "getKiroCliSocialToken").mockReturnValue(undefined);
+    vi.spyOn(kiroCli, "getKiroCliCredentials").mockReturnValue({
+      access: "cli-access-token",
+      refresh: "refresh|client|secret|idc",
+      expires: Date.now() + 60_000,
+      region: "us-east-1",
+      authMethod: "idc",
+      clientId: "client",
+      clientSecret: "secret",
+    });
+    vi.spyOn(kiroCli, "getKiroCliCredentialsAllowExpired").mockReturnValue(undefined);
+    const mockFetch = mockFetchOk('{"content":"Hi"}{"contextUsagePercentage":5}');
+    vi.stubGlobal("fetch", mockFetch);
+
+    const events = await collect(streamKiro(makeModel(), makeContext(), {}));
+
+    expect(mockFetch.mock.calls[0]?.[1]?.headers.Authorization).toBe("Bearer cli-access-token");
+    expect(events.some((event) => event.type === "done")).toBe(true);
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   describe("adaptive thinking in request body", () => {
     function bodyOf(mockFetch: ReturnType<typeof vi.fn>) {
       return JSON.parse(mockFetch.mock.calls[0][1].body);
     }
-    async function send(reasoning = "max", id = "claude-opus-4-8") {
+    async function send(reasoning = "max", id = "claude-opus-4.8") {
       const mockFetch = mockFetchOk('{"content":"Hi"}{"contextUsagePercentage":5}');
       vi.stubGlobal("fetch", mockFetch);
-      const stream = streamKiro(makeModel({ id, reasoning: true }), makeContext(), {
+      const stream = streamKiro(makeDiscoveredModel(id), makeContext(), {
         apiKey: "tok",
         reasoning,
       } as any);
@@ -242,17 +289,23 @@ describe("Feature 9: Streaming Integration", () => {
     });
 
     it("sonnet-4-6 high (4-tier) maps to effort high with full payload", async () => {
-      expect(bodyOf(await send("high", "claude-sonnet-4-6")).additionalModelRequestFields).toEqual({
+      expect(bodyOf(await send("high", "claude-sonnet-4.6")).additionalModelRequestFields).toEqual({
         thinking: { type: "adaptive", display: "summarized" },
         output_config: { effort: "high" },
         max_tokens: 64000,
       });
     });
 
+    it("GPT reasoning uses the standard mode and metadata-mapped effort", async () => {
+      expect(bodyOf(await send("minimal", "gpt-5.6-sol")).additionalModelRequestFields).toEqual({
+        reasoning: { mode: "standard", effort: "none" },
+      });
+    });
+
     it("non-adaptive model (haiku) sends nothing", async () => {
       const mockFetch = mockFetchOk('{"content":"Hi"}{"contextUsagePercentage":5}');
       vi.stubGlobal("fetch", mockFetch);
-      const stream = streamKiro(makeModel({ id: "claude-haiku-4-5", reasoning: false }), makeContext(), {
+      const stream = streamKiro(makeDiscoveredModel("claude-haiku-4.5"), makeContext(), {
         apiKey: "tok",
         reasoning: "high",
       } as any);
@@ -263,7 +316,7 @@ describe("Feature 9: Streaming Integration", () => {
     it("auto sends nothing", async () => {
       const mockFetch = mockFetchOk('{"content":"Hi"}{"contextUsagePercentage":5}');
       vi.stubGlobal("fetch", mockFetch);
-      const stream = streamKiro(makeModel({ id: "auto", reasoning: true }), makeContext(), {
+      const stream = streamKiro(makeDiscoveredModel("auto"), makeContext(), {
         apiKey: "tok",
         reasoning: "xhigh",
       } as any);
@@ -314,9 +367,9 @@ describe("Feature 9: Streaming Integration", () => {
       const body = bodyOf(mockFetch);
       const uim = body.conversationState.currentMessage.userInputMessage;
       expect(uim.userInputMessageContext.envState).toEqual({
-        operatingSystem: ({ darwin: "macos", win32: "windows", linux: "linux" } as Record<string, string>)[
-          process.platform
-        ] ?? "linux",
+        operatingSystem:
+          ({ darwin: "macos", win32: "windows", linux: "linux" } as Record<string, string>)[process.platform] ??
+          "linux",
         currentWorkingDirectory: process.cwd(),
       });
       expect(body.conversationState.agentContinuationId).toBeDefined();
@@ -1735,7 +1788,10 @@ describe("Feature 9: Streaming Integration", () => {
         return { ok: false, status: 403, statusText: "Forbidden", text: () => Promise.resolve("Access denied") };
       }
       if (typeof url === "string" && url.includes("ListAvailableProfiles")) {
-        return { ok: true, json: () => Promise.resolve({ profiles: [{ arn: "arn:aws:codewhisperer:us-east-1:123:profile/TEST" }] }) };
+        return {
+          ok: true,
+          json: () => Promise.resolve({ profiles: [{ arn: "arn:aws:codewhisperer:us-east-1:123:profile/TEST" }] }),
+        };
       }
       // generateAssistantResponse retry → success
       return { ok: true, body: { getReader: () => successReader } };
@@ -1833,6 +1889,67 @@ describe("Feature 9: Streaming Integration", () => {
     vi.unstubAllGlobals();
   });
 
+  it("does not refresh or switch to mismatched option or local credentials after a 403", async () => {
+    resetProfileArnCache(true);
+    const oauthModule = await import("../src/oauth.js");
+    const kiroCliModule = await import("../src/kiro-cli.js");
+    const refreshSpy = vi.spyOn(oauthModule, "forceRefreshKiroToken");
+    const socialSpy = vi.spyOn(kiroCliModule, "getKiroCliSocialToken").mockReturnValue(undefined);
+    const localCredential = {
+      refresh: "local-refresh|client|secret|idc",
+      access: "unrelated-local-token",
+      expires: Date.now() + 3600000,
+      clientId: "client",
+      clientSecret: "secret",
+      region: "eu-central-1",
+      authMethod: "idc" as const,
+    };
+    const validSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentials").mockReturnValue(localCredential);
+    const expiredSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentialsAllowExpired").mockReturnValue(localCredential);
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: "Forbidden",
+        text: () => Promise.resolve('{"message":"invalid bearer"}'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi
+              .fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}'),
+              })
+              .mockResolvedValueOnce({ done: true, value: undefined }),
+          }),
+        },
+      });
+    vi.stubGlobal("fetch", mockFetch);
+
+    const events = await collect(
+      streamKiro(makeModel(), makeContext(), {
+        apiKey: "explicit-token",
+        credentials: { ...localCredential, access: "unrelated-option-token" },
+      } as any),
+    );
+
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[0][1].headers.Authorization).toBe("Bearer explicit-token");
+    expect(mockFetch.mock.calls[1][1].headers.Authorization).toBe("Bearer explicit-token");
+    expect(events.find((event) => event.type === "done")).toBeDefined();
+
+    refreshSpy.mockRestore();
+    socialSpy.mockRestore();
+    validSpy.mockRestore();
+    expiredSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   it("does not retry repeated 429 responses inside the provider", async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: false,
@@ -1896,8 +2013,12 @@ describe("Feature 9: Streaming Integration", () => {
         ok: true,
         body: {
           getReader: () => ({
-            read: vi.fn()
-              .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}') })
+            read: vi
+              .fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}'),
+              })
               .mockResolvedValueOnce({ done: true, value: undefined }),
           }),
         },
@@ -1924,8 +2045,12 @@ describe("Feature 9: Streaming Integration", () => {
         ok: true,
         body: {
           getReader: () => ({
-            read: vi.fn()
-              .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}') })
+            read: vi
+              .fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}'),
+              })
               .mockResolvedValueOnce({ done: true, value: undefined }),
           }),
         },
@@ -1935,7 +2060,15 @@ describe("Feature 9: Streaming Integration", () => {
 
     const stream = streamKiro(makeModel(), makeContext(), {
       apiKey: "tok",
-      credentials: { region: "eu-west-1", access: "tok", refresh: "r|c|s|idc", expires: Date.now() + 9e5, clientId: "", clientSecret: "", authMethod: "idc" },
+      credentials: {
+        region: "eu-west-1",
+        access: "tok",
+        refresh: "r|c|s|idc",
+        expires: Date.now() + 9e5,
+        clientId: "",
+        clientSecret: "",
+        authMethod: "idc",
+      },
     } as any);
     await collect(stream);
 
@@ -1945,7 +2078,44 @@ describe("Feature 9: Streaming Integration", () => {
     vi.unstubAllGlobals();
   });
 
+  it("ignores routing metadata from options credentials whose access token does not match", async () => {
+    clearAuthMeta("explicit-token");
+    const kiroCliModule = await import("../src/kiro-cli.js");
+    const socialSpy = vi.spyOn(kiroCliModule, "getKiroCliSocialToken").mockReturnValue(undefined);
+    const validSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentials").mockReturnValue(undefined);
+    const expiredSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentialsAllowExpired").mockReturnValue(undefined);
+    const mockFetch = mockFetchOk('{"content":"ok"}{"contextUsagePercentage":5}');
+    vi.stubGlobal("fetch", mockFetch);
+
+    const model = { ...makeModel(), baseUrl: "https://runtime.us-east-1.kiro.dev/" };
+    await collect(
+      streamKiro(model, makeContext(), {
+        apiKey: "explicit-token",
+        credentials: {
+          region: "eu-central-1",
+          profileArn: "arn:aws:codewhisperer:eu-central-1:123:profile/mismatched",
+          access: "different-token",
+          refresh: "r|c|s|idc",
+          expires: Date.now() + 9e5,
+          clientId: "",
+          clientSecret: "",
+          authMethod: "idc",
+        },
+      } as any),
+    );
+
+    const [url, init] = mockFetch.mock.calls[0] ?? [];
+    expect(url).toContain("runtime.us-east-1.kiro.dev");
+    expect(init.body).not.toContain("mismatched");
+
+    socialSpy.mockRestore();
+    validSpy.mockRestore();
+    expiredSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   it("falls back to model baseUrl region when no credentials region", async () => {
+    clearAuthMeta("tok");
     const kiroCliModule = await import("../src/kiro-cli.js");
     const getCredsSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentials").mockReturnValue(undefined);
     const getExpiredSpy = vi.spyOn(kiroCliModule, "getKiroCliCredentialsAllowExpired").mockReturnValue(undefined);
@@ -1958,8 +2128,12 @@ describe("Feature 9: Streaming Integration", () => {
         ok: true,
         body: {
           getReader: () => ({
-            read: vi.fn()
-              .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}') })
+            read: vi
+              .fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}'),
+              })
               .mockResolvedValueOnce({ done: true, value: undefined }),
           }),
         },
@@ -1987,20 +2161,27 @@ describe("Feature 9: Streaming Integration", () => {
 
     const mockFetch = vi.fn(async (url: string) => {
       // US management ListAvailableProfiles → fail (403)
-      if (typeof url === "string" && url.includes("management.us-east-1") ) {
+      if (typeof url === "string" && url.includes("management.us-east-1")) {
         return { ok: false, status: 403, statusText: "Forbidden", text: () => Promise.resolve("denied") };
       }
       // EU management ListAvailableProfiles → success
       if (typeof url === "string" && url.includes("management.eu-central-1")) {
-        return { ok: true, json: () => Promise.resolve({ profiles: [{ arn: "arn:aws:codewhisperer:eu-central-1:123:profile/test" }] }) };
+        return {
+          ok: true,
+          json: () => Promise.resolve({ profiles: [{ arn: "arn:aws:codewhisperer:eu-central-1:123:profile/test" }] }),
+        };
       }
       // generateAssistantResponse → success
       return {
         ok: true,
         body: {
           getReader: () => ({
-            read: vi.fn()
-              .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}') })
+            read: vi
+              .fn()
+              .mockResolvedValueOnce({
+                done: false,
+                value: new TextEncoder().encode('{"content":"ok"}{"contextUsagePercentage":5}'),
+              })
               .mockResolvedValueOnce({ done: true, value: undefined }),
           }),
         },
@@ -2657,7 +2838,6 @@ describe("Feature 9: Streaming Integration", () => {
   });
 });
 
-
 describe("tool-use ID normalization (cross-provider sessions)", () => {
   const KIMI_IDS = ["functions.find:4", "functions.search:6", "functions.bash:3", "functions.eval:17"];
 
@@ -2706,7 +2886,8 @@ describe("tool-use ID normalization (cross-provider sessions)", () => {
     );
     const body = bodyOf(mockFetch);
     const callId = body.conversationState.history.at(-1).assistantResponseMessage.toolUses[0].toolUseId;
-    const resultId = body.conversationState.currentMessage.userInputMessage.userInputMessageContext.toolResults[0].toolUseId;
+    const resultId =
+      body.conversationState.currentMessage.userInputMessage.userInputMessageContext.toolResults[0].toolUseId;
     expect(callId).toBe(resultId);
     expect(callId).toMatch(/^[a-zA-Z0-9_-]+$/);
     expect(callId).not.toBe("functions.find:4");
@@ -2822,8 +3003,7 @@ describe("developer message support (OMP v16)", () => {
   beforeEach(() => resetProfileArnCache(true));
   afterEach(() => vi.unstubAllGlobals());
 
-  const bodyOf = (mockFetch: ReturnType<typeof vi.fn>) =>
-    JSON.parse(mockFetch.mock.calls[0][1].body);
+  const bodyOf = (mockFetch: ReturnType<typeof vi.fn>) => JSON.parse(mockFetch.mock.calls[0][1].body);
 
   function devCtx(content: string): Context {
     return {

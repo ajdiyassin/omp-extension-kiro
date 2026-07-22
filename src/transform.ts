@@ -11,7 +11,7 @@ import type {
   ToolResultMessage,
 } from "@oh-my-pi/pi-ai";
 import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema/wire";
-import type { KiroAdaptivePayload } from "./adaptive-thinking.js";
+import type { KiroModelRequestFields } from "./adaptive-thinking.js";
 
 export interface KiroImage {
   format: string;
@@ -44,10 +44,10 @@ export interface KiroUserInputMessage {
     tools?: KiroToolSpec[];
     envState?: KiroEnvState;
     // experiment: "user-input-context" adaptive payload shape
-    additionalModelRequestFields?: KiroAdaptivePayload;
+    additionalModelRequestFields?: KiroModelRequestFields;
   };
   // experiment: "user-input-message" adaptive payload shape
-  additionalModelRequestFields?: KiroAdaptivePayload;
+  additionalModelRequestFields?: KiroModelRequestFields;
 }
 
 /** Map Node's process.platform to the operatingSystem enum the Kiro runtime accepts. */

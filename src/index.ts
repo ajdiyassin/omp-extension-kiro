@@ -1,7 +1,9 @@
-import type { Api, Model, OAuthCredentials } from "@oh-my-pi/pi-ai";
+import type { OAuthCredentials } from "@oh-my-pi/pi-ai";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { getKiroApiKeyCredentials, getKiroCliCredentials } from "./kiro-cli.js";
-import { endpointForApiRegion, getCachedModels, kiroModels, resolveApiRegion } from "./models.js";
+import { fetchKiroModelCatalog } from "./management.js";
+import { mapKiroModelCatalog } from "./model-discovery.js";
+import { endpointForApiRegion } from "./models.js";
 import type { KiroCredentials } from "./oauth.js";
 import { loginKiro, refreshKiroToken } from "./oauth.js";
 import { streamKiro } from "./stream.js";
@@ -17,30 +19,22 @@ function resolveCliCredentials(): KiroCredentials | undefined {
 }
 
 export default function ompKiroProvider(pi: ExtensionAPI) {
+  const oauth = {
+    name: "Kiro",
+    login: loginKiro,
+    refreshToken: refreshKiroToken,
+    getApiKey: (cred: OAuthCredentials) => cred.access,
+    // OMP 17 does not yet type these extension OAuth hooks, but preserves them
+    // when registering the provider. Discovery also has its own safe fallback.
+    getCliCredentials: resolveCliCredentials,
+    fetchUsage: fetchKiroUsage,
+  };
+
   pi.registerProvider("kiro", {
     baseUrl: endpointForApiRegion("us-east-1"),
     api: "kiro-api",
-    // `thinking.efforts` uses pi-catalog's `Effort` const-enum nominally; our
-    // values are the matching strings, so cast at the boundary.
-    models: kiroModels as unknown as Parameters<ExtensionAPI["registerProvider"]>[1]["models"],
-    oauth: {
-      name: "Kiro",
-      login: loginKiro,
-      refreshToken: refreshKiroToken,
-      getApiKey: (cred: OAuthCredentials) => cred.access,
-      getCliCredentials: resolveCliCredentials,
-      modifyModels: (models: Model<Api>[], cred: OAuthCredentials) => {
-        const apiRegion = resolveApiRegion((cred as KiroCredentials).region);
-        const cachedKiro = getCachedModels(apiRegion);
-        const nonKiro = models.filter((m: Model<Api>) => m.provider !== "kiro");
-        const modifiedKiro = cachedKiro.map((m) => ({
-          ...m,
-          baseUrl: endpointForApiRegion(apiRegion),
-        }));
-        return [...nonKiro, ...modifiedKiro];
-      },
-      fetchUsage: fetchKiroUsage,
-    } as any,
+    fetchDynamicModels: async (apiKey) => mapKiroModelCatalog(await fetchKiroModelCatalog(apiKey)),
+    oauth,
     streamSimple: streamKiro,
   });
 }

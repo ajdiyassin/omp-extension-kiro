@@ -16,14 +16,29 @@ import type {
   ToolCall,
   ToolResultMessage,
 } from "@oh-my-pi/pi-ai";
+import {
+  ADAPTIVE_PAYLOAD_LOCATIONS,
+  type AdaptivePayloadShape,
+  buildKiroModelRequestFields,
+  getAdaptiveFieldSet,
+  getAdaptivePayloadShape,
+  type KiroAnthropicRequestFields,
+  type KiroGptRequestFields,
+  type KiroModelRequestFields,
+  type OmpEffort,
+} from "./adaptive-thinking.js";
 import { clearAuthMeta, readAuthMeta, writeAuthMeta } from "./auth-meta.js";
 import { parseBracketToolCalls } from "./bracket-tool-parser.js";
 import { debugEnabled, debugLog } from "./debug.js";
 import { parseKiroEvents } from "./event-parser.js";
 import { createAssistantMessageEventStream } from "./event-stream.js";
 import { addPlaceholderTools, HISTORY_LIMIT, HISTORY_LIMIT_CONTEXT_WINDOW, truncateHistory } from "./history.js";
-import { getKiroCliCredentials, getKiroCliCredentialsAllowExpired, saveKiroCliCredentials } from "./kiro-cli.js";
-import { forceRefreshKiroToken, getKiroCredentialsFromOptions, type KiroCredentials } from "./oauth.js";
+import {
+  getKiroCliCredentials,
+  getKiroCliCredentialsAllowExpired,
+  getKiroCliSocialToken,
+  saveKiroCliCredentials,
+} from "./kiro-cli.js";
 import {
   endpointForApiRegion,
   extractRegionFromEndpoint,
@@ -32,19 +47,11 @@ import {
   resolveApiRegion,
   resolveKiroModel,
 } from "./models.js";
-import {
-  ADAPTIVE_PAYLOAD_LOCATIONS,
-  type AdaptivePayloadShape,
-  buildKiroAdaptiveThinkingPayload,
-  getAdaptiveFieldSet,
-  getAdaptivePayloadShape,
-  type KiroAdaptivePayload,
-  type OmpEffort,
-} from "./adaptive-thinking.js";
+import { forceRefreshKiroToken, getKiroCredentialsFromOptions, type KiroCredentials } from "./oauth.js";
 import {
   capacityRetryConfig,
   exponentialBackoff,
-  firstTokenTimeoutForModel,
+  firstTokenTimeout,
   isCapacityError,
   isNonRetryableBodyError,
   isRequestBodyInvalidError,
@@ -53,6 +60,7 @@ import {
 } from "./retry.js";
 import { ThinkingTagParser } from "./thinking-parser.js";
 import { countTokens } from "./tokenizer.js";
+import { createKiroToolUseIdNormalizer, KIRO_TOOL_USE_ID_PATTERN } from "./tool-id.js";
 import {
   buildHistory,
   convertImagesToKiro,
@@ -70,7 +78,6 @@ import {
   TOOL_RESULT_LIMIT,
   truncate,
 } from "./transform.js";
-import { createKiroToolUseIdNormalizer, KIRO_TOOL_USE_ID_PATTERN } from "./tool-id.js";
 import { TRUNCATION_NOTICE, wasPreviousResponseTruncated } from "./truncation.js";
 
 const CAPACITY_LOG_DIR = join(homedir(), ".pi", "logs");
@@ -120,11 +127,12 @@ interface KiroRequest {
   };
   profileArn?: string;
   // experiment: "top-level-wrapper" adaptive payload shape
-  additionalModelRequestFields?: KiroAdaptivePayload;
-  // experiment: "top-level-direct" adaptive payload shape (payload fields spread as siblings)
-  thinking?: KiroAdaptivePayload["thinking"];
-  output_config?: KiroAdaptivePayload["output_config"];
+  additionalModelRequestFields?: KiroModelRequestFields;
+  // experiment: "top-level-direct" provider request fields (payload fields spread as siblings)
+  thinking?: KiroAnthropicRequestFields["thinking"];
+  output_config?: KiroAnthropicRequestFields["output_config"];
   max_tokens?: number;
+  reasoning?: KiroGptRequestFields["reasoning"];
 }
 
 /**
@@ -134,7 +142,7 @@ interface KiroRequest {
  */
 export function applyAdaptivePayloadShape(
   request: KiroRequest,
-  payload: KiroAdaptivePayload,
+  payload: KiroModelRequestFields,
   shape: AdaptivePayloadShape,
 ): void {
   const uim = request.conversationState.currentMessage.userInputMessage;
@@ -143,15 +151,20 @@ export function applyAdaptivePayloadShape(
       request.additionalModelRequestFields = payload;
       break;
     case "top-level-direct":
-      if (payload.thinking) request.thinking = payload.thinking;
-      request.output_config = payload.output_config;
-      if (payload.max_tokens !== undefined) request.max_tokens = payload.max_tokens;
+      if ("reasoning" in payload) {
+        request.reasoning = payload.reasoning;
+      } else {
+        if (payload.thinking) request.thinking = payload.thinking;
+        request.output_config = payload.output_config;
+        if (payload.max_tokens !== undefined) request.max_tokens = payload.max_tokens;
+      }
       break;
     case "user-input-message":
       uim.additionalModelRequestFields = payload;
       break;
     case "user-input-context":
-      (uim.userInputMessageContext ??= {}).additionalModelRequestFields = payload;
+      uim.userInputMessageContext ??= {};
+      uim.userInputMessageContext.additionalModelRequestFields = payload;
       break;
   }
 }
@@ -265,12 +278,12 @@ function emitToolCall(
   return true;
 }
 
-const KIRO_API_PROBE_REGIONS = ["us-east-1", "eu-central-1"];
+const KIRO_API_BOOTSTRAP_REGIONS = ["us-east-1", "eu-central-1"];
 
 async function autoDetectKiroApiRegion(
   accessToken: string,
 ): Promise<{ apiRegion: string; endpoint: string; profileArn?: string } | undefined> {
-  for (const apiRegion of KIRO_API_PROBE_REGIONS) {
+  for (const apiRegion of KIRO_API_BOOTSTRAP_REGIONS) {
     const endpoint = endpointForApiRegion(apiRegion);
     const arn = await resolveProfileArn(accessToken, endpoint);
     if (arn) return { apiRegion, endpoint, profileArn: arn };
@@ -308,17 +321,14 @@ export function streamKiro(
       // verbatim as the Bearer token. Highest precedence after an explicit OMP
       // apiKey.
       const envApiKey = process.env.KIRO_API_KEY;
-      let accessToken = options?.apiKey as string | undefined;
-      let usingApiKey = false;
-      if (!accessToken && envApiKey) {
-        accessToken = envApiKey;
-        usingApiKey = true;
-      }
-      if (!accessToken) throw new Error("Kiro credentials not set. Run /login kiro, install kiro-cli, or set KIRO_API_KEY.");
-
-      const optionCreds = getKiroCredentialsFromOptions(options);
-      const cliCreds = getKiroCliCredentials();
+      const suppliedOptionCreds = getKiroCredentialsFromOptions(options);
+      const cliCreds = getKiroCliSocialToken() ?? getKiroCliCredentials();
       const expiredCliCreds = getKiroCliCredentialsAllowExpired();
+      let accessToken = (options?.apiKey as string | undefined) ?? envApiKey ?? cliCreds?.access;
+      const usingApiKey = Boolean(envApiKey && accessToken === envApiKey);
+      if (!accessToken)
+        throw new Error("Kiro credentials not set. Run /login kiro, install kiro-cli, or set KIRO_API_KEY.");
+      const optionCreds = suppliedOptionCreds?.access === accessToken ? suppliedOptionCreds : undefined;
 
       const matchingCliCreds =
         cliCreds?.access === accessToken
@@ -339,11 +349,7 @@ export function streamKiro(
         cachedMeta?.apiRegion ||
         extractRegionFromProfileArn(cachedMeta?.profileArn) ||
         matchingCliCreds?.region ||
-        extractRegionFromProfileArn(matchingCliCreds?.profileArn) ||
-        cliCreds?.region ||
-        extractRegionFromProfileArn(cliCreds?.profileArn) ||
-        expiredCliCreds?.region ||
-        extractRegionFromProfileArn(expiredCliCreds?.profileArn);
+        extractRegionFromProfileArn(matchingCliCreds?.profileArn);
 
       let apiRegion: string;
       let endpoint: string;
@@ -353,7 +359,7 @@ export function streamKiro(
       if (requestedRegion) {
         apiRegion = resolveApiRegion(requestedRegion);
         endpoint = endpointForApiRegion(apiRegion);
-        profileArn = usingApiKey ? undefined : (profileArn || (await resolveProfileArn(accessToken, endpoint)));
+        profileArn = usingApiKey ? undefined : profileArn || (await resolveProfileArn(accessToken, endpoint));
       } else {
         const detected = await autoDetectKiroApiRegion(accessToken);
         if (detected) {
@@ -363,7 +369,7 @@ export function streamKiro(
         } else {
           apiRegion = resolveApiRegion(extractRegionFromEndpoint(model.baseUrl));
           endpoint = endpointForApiRegion(apiRegion);
-          profileArn = usingApiKey ? undefined : (await resolveProfileArn(accessToken, endpoint));
+          profileArn = usingApiKey ? undefined : await resolveProfileArn(accessToken, endpoint);
         }
       }
 
@@ -375,33 +381,34 @@ export function streamKiro(
         }
       }
 
-      // Trigger dynamic models cache update in the background if empty or stale
-      const { isCacheStale, updateKiroModelsCache } = await import("./models.js");
-      if (!process.env.VITEST && isCacheStale(apiRegion)) {
-        updateKiroModelsCache(accessToken, apiRegion, profileArn).catch(() => {});
-      }
-
       const kiroModelId = resolveKiroModel(model.id);
-      const adaptiveThinking = buildKiroAdaptiveThinkingPayload(model.id, options?.reasoning as OmpEffort | undefined);
-      const adaptivePayloadShape = adaptiveThinking ? getAdaptivePayloadShape() : undefined;
-      const adaptiveFields = adaptiveThinking ? getAdaptiveFieldSet() : undefined;
+      const requestFields = buildKiroModelRequestFields(model, options?.reasoning as OmpEffort | undefined);
+      const requestFieldsPayloadShape = requestFields ? getAdaptivePayloadShape() : undefined;
+      const adaptiveFields = requestFields && !("reasoning" in requestFields) ? getAdaptiveFieldSet() : undefined;
       debugLog("request.init", {
         endpoint,
         apiRegion,
         credentialRegion: optionCreds?.region,
         cachedRegion: cachedMeta?.apiRegion,
-        cliRegion: matchingCliCreds?.region || cliCreds?.region || expiredCliCreds?.region,
+        cliRegion: matchingCliCreds?.region,
         envRegion: process.env.KIRO_API_REGION,
         autoDetected: !requestedRegion,
         model: model.id,
         kiroModelId,
         contextWindow: model.contextWindow,
-        adaptiveThinkingEnabled: Boolean(adaptiveThinking),
-        adaptivePayloadShape,
-        adaptivePayloadLocation: adaptivePayloadShape ? ADAPTIVE_PAYLOAD_LOCATIONS[adaptivePayloadShape] : undefined,
+        requestFieldsEnabled: Boolean(requestFields),
+        requestFieldsFamily: requestFields ? ("reasoning" in requestFields ? "gpt" : "anthropic") : undefined,
+        requestFieldsPayloadShape,
+        requestFieldsPayloadLocation: requestFieldsPayloadShape
+          ? ADAPTIVE_PAYLOAD_LOCATIONS[requestFieldsPayloadShape]
+          : undefined,
         adaptiveFields,
-        kiroEffort: adaptiveThinking?.output_config.effort,
-        maxTokens: adaptiveThinking?.max_tokens,
+        kiroEffort: requestFields
+          ? "reasoning" in requestFields
+            ? requestFields.reasoning.effort
+            : requestFields.output_config.effort
+          : undefined,
+        maxTokens: requestFields && !("reasoning" in requestFields) ? requestFields.max_tokens : undefined,
         reasoning: options?.reasoning,
         messageCount: context.messages.length,
         toolCount: context.tools?.length ?? 0,
@@ -576,8 +583,8 @@ export function streamKiro(
           },
           ...(profileArn ? { profileArn } : {}),
         };
-        if (adaptiveThinking && adaptivePayloadShape) {
-          applyAdaptivePayloadShape(request, adaptiveThinking, adaptivePayloadShape);
+        if (requestFields && requestFieldsPayloadShape) {
+          applyAdaptivePayloadShape(request, requestFields, requestFieldsPayloadShape);
         }
         // Fail fast locally if any tool-use ID is still invalid after normalization,
         // rather than letting Kiro reject it with an opaque 400 TOOL_SCHEMA_INVALID.
@@ -663,12 +670,11 @@ export function streamKiro(
                 }
               }
 
-              // Otherwise: try token refresh (skip for API-key auth — no refresh token)
-              const optCreds = usingApiKey ? undefined : getKiroCredentialsFromOptions(options);
-              const cli = getKiroCliCredentials();
-              const expiredCli = getKiroCliCredentialsAllowExpired();
-              const candidates = [optCreds, cli, expiredCli].filter(
-                (c): c is KiroCredentials => !!c?.refresh && !!c?.access,
+              // Refresh only the credential that exactly matches the bearer that received the 403.
+              // Unrelated option/local credentials must never switch the active account.
+              const candidates = (usingApiKey ? [] : [optionCreds, matchingCliCreds]).filter(
+                (candidate): candidate is KiroCredentials =>
+                  !!candidate?.refresh && candidate.access === accessToken,
               );
 
               let freshCreds: KiroCredentials | undefined;
@@ -768,7 +774,7 @@ export function streamKiro(
             const result = await Promise.race([
               readPromise,
               new Promise<typeof FIRST_TOKEN_SENTINEL>((resolve) =>
-                setTimeout(() => resolve(FIRST_TOKEN_SENTINEL), firstTokenTimeoutForModel(model.id)),
+                setTimeout(() => resolve(FIRST_TOKEN_SENTINEL), firstTokenTimeout()),
               ),
             ]);
             if (result === FIRST_TOKEN_SENTINEL) {
@@ -841,14 +847,18 @@ export function streamKiro(
                     stream.push({ type: "text_start", contentIndex: textBlockIndex, partial: output });
                   }
                   (output.content[textBlockIndex] as TextContent).text += contentData;
-                  stream.push({ type: "text_delta", contentIndex: textBlockIndex, delta: contentData, partial: output });
+                  stream.push({
+                    type: "text_delta",
+                    contentIndex: textBlockIndex,
+                    delta: contentData,
+                    partial: output,
+                  });
                 }
                 // Handle stopReason from content event (M2). Map Kiro's
                 // "END_TURN" to OMP "stop"; preserve other values. The field
                 // drives final turn-termination in the finalize step below.
                 if (event.stopReason) {
-                  parsedStopReason =
-                    event.stopReason === "END_TURN" ? "stop" : event.stopReason;
+                  parsedStopReason = event.stopReason === "END_TURN" ? "stop" : event.stopReason;
                 }
                 break;
               }

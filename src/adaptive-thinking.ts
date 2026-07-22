@@ -1,42 +1,26 @@
-// ABOUTME: Adaptive-thinking mapper + experiment harness for the Kiro API.
-// ABOUTME: Builds the additionalModelRequestFields payload per model + OMP effort level.
-//
-// VALIDATED (2026-06-12, live runtime, claude-sonnet-4.6): the top-level
-// additionalModelRequestFields block — both {output_config} and the full
-// {thinking,output_config,max_tokens} — returns 200 and streams real content.
-// The earlier 400 REQUEST_BODY_INVALID was NOT the adaptive payload; it was
-// envState.operatingSystem being sent as "win32" instead of "windows" (fixed in
-// transform.ts). Adaptive thinking is therefore ENABLED by default, with the
-// full payload at the top level (matches the advertised per-model schema).
-//
-// Env overrides (kill-switch + debugging — all four shapes/field-sets were live-verified):
-//   KIRO_ADAPTIVE_THINKING=0|false     disable entirely (default: enabled)
-//   KIRO_ADAPTIVE_PAYLOAD_SHAPE=...     payload location (default top-level-wrapper)
-//       top-level-wrapper   -> { ...request, additionalModelRequestFields: payload }
-//       top-level-direct     -> { ...request, ...payload }  (siblings of conversationState)
-//       user-input-message   -> currentMessage.userInputMessage.additionalModelRequestFields
-//       user-input-context   -> currentMessage.userInputMessage.userInputMessageContext.additionalModelRequestFields
-//   KIRO_ADAPTIVE_FIELDS=full|effort-only   which fields to send (default full)
-//       full         -> { thinking, output_config, max_tokens }  (advertised schema, future-proof)
-//       effort-only -> { output_config: { effort } }            (minimal; what kiro-cli sends by default)
+// ABOUTME: Builds Kiro additionalModelRequestFields from OMP canonical thinking metadata.
+// ABOUTME: Supports Anthropic adaptive and GPT reasoning schema families without model-ID tables.
 
-// MIGRATION DECISION (2026-07-08, kiro-cli 2.11.1): kiro-cli defaults to the
-// `effort-only` field-set (output_config.effort) at the top level, but the
-// extension defaults to `full` ({ thinking, output_config, max_tokens }). Both
-// are live-verified 200-OK against the Kiro runtime. We KEEP `full` as the
-// default because it mirrors the advertised per-model schema and is
-// future-proof (e.g., if `thinking` or `max_tokens` become required). The
-// `effort-only` shape can be opted into via KIRO_ADAPTIVE_FIELDS=effort-only to
-// mirror kiro-cli exactly. See docs/kiro-cli-latest-migration-handoff.md M3.
+import type { Api, Model } from "@oh-my-pi/pi-ai";
 
 export type OmpEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
-export type KiroEffort = "low" | "medium" | "high" | "xhigh" | "max";
+export type KiroAnthropicEffort = "low" | "medium" | "high" | "xhigh" | "max";
+export type KiroGptEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 
-export type KiroAdaptivePayload = {
+export type KiroAnthropicRequestFields = {
   thinking?: { type: "adaptive"; display: "summarized" };
-  output_config: { effort: KiroEffort };
+  output_config: { effort: KiroAnthropicEffort };
   max_tokens?: number;
 };
+
+export type KiroGptRequestFields = {
+  reasoning: {
+    mode: "standard";
+    effort: KiroGptEffort;
+  };
+};
+
+export type KiroModelRequestFields = KiroAnthropicRequestFields | KiroGptRequestFields;
 
 export type AdaptivePayloadShape =
   | "top-level-wrapper"
@@ -46,44 +30,7 @@ export type AdaptivePayloadShape =
 
 export type AdaptiveFieldSet = "full" | "effort-only";
 
-type ModelConfig = {
-  kiroModelId: string;
-  maxTokens: number;
-  defaultOmpEffort: OmpEffort;
-  effortMap: Record<OmpEffort, KiroEffort>;
-};
-
-// OMP 16.4.0 wire-exact ladders: user-facing efforts match Kiro wire values 1:1.
-// `minimal` is not a Kiro/Anthropic adaptive tier — clamp down to `low`.
-// 5-tier (Opus 4.7+, Sonnet 5+): low | medium | high | xhigh | max
-const FIVE_TIER: Record<OmpEffort, KiroEffort> = {
-  minimal: "low",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "xhigh",
-  max: "max",
-};
-
-// 4-tier (Opus/Sonnet 4.6): low | medium | high | max — no xhigh wire tier.
-// Unsupported xhigh clamps up to max (nearest available top tier).
-const FOUR_TIER: Record<OmpEffort, KiroEffort> = {
-  minimal: "low",
-  low: "low",
-  medium: "medium",
-  high: "high",
-  xhigh: "max",
-  max: "max",
-};
-
-const KIRO_ADAPTIVE_MODELS: Record<string, ModelConfig> = {
-  "claude-opus-4-8": { kiroModelId: "claude-opus-4.8", maxTokens: 128000, defaultOmpEffort: "medium", effortMap: FIVE_TIER },
-  "claude-opus-4-7": { kiroModelId: "claude-opus-4.7", maxTokens: 128000, defaultOmpEffort: "high",   effortMap: FIVE_TIER },
-  "claude-opus-4-6": { kiroModelId: "claude-opus-4.6", maxTokens: 64000,  defaultOmpEffort: "high",   effortMap: FOUR_TIER },
-  "claude-sonnet-5":   { kiroModelId: "claude-sonnet-5",   maxTokens: 128000, defaultOmpEffort: "medium", effortMap: FIVE_TIER },
-  "claude-sonnet-4-6": { kiroModelId: "claude-sonnet-4.6", maxTokens: 64000, defaultOmpEffort: "high", effortMap: FOUR_TIER },
-};
-
+const OMP_EFFORT_ORDER: readonly OmpEffort[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 const PAYLOAD_SHAPES: readonly AdaptivePayloadShape[] = [
   "top-level-wrapper",
   "top-level-direct",
@@ -91,61 +38,77 @@ const PAYLOAD_SHAPES: readonly AdaptivePayloadShape[] = [
   "user-input-context",
 ];
 
-/** Human-readable JSON path each shape writes to — surfaced as `adaptivePayloadLocation` in debug logs. */
+/** Human-readable JSON path each shape writes to, surfaced in debug logs. */
 export const ADAPTIVE_PAYLOAD_LOCATIONS: Record<AdaptivePayloadShape, string> = {
   "top-level-wrapper": "request.additionalModelRequestFields",
-  "top-level-direct": "request.{thinking,output_config,max_tokens}",
+  "top-level-direct": "request.{thinking,output_config,max_tokens,reasoning}",
   "user-input-message": "conversationState.currentMessage.userInputMessage.additionalModelRequestFields",
   "user-input-context":
     "conversationState.currentMessage.userInputMessage.userInputMessageContext.additionalModelRequestFields",
 };
 
-export function isAdaptiveThinkingSupported(modelId: string): boolean {
-  return Object.hasOwn(KIRO_ADAPTIVE_MODELS, modelId);
-}
-
-/** Adaptive thinking is enabled by default; KIRO_ADAPTIVE_THINKING=0 is the kill-switch. */
+/** Adaptive thinking is enabled by default; KIRO_ADAPTIVE_THINKING=0 is the Claude kill-switch. */
 export function isAdaptiveThinkingEnabled(): boolean {
-  const v = process.env.KIRO_ADAPTIVE_THINKING;
-  return v !== "0" && v !== "false";
+  const value = process.env.KIRO_ADAPTIVE_THINKING;
+  return value !== "0" && value !== "false";
 }
 
-/** Where to place the adaptive payload in the request (experiment knob). */
 export function getAdaptivePayloadShape(): AdaptivePayloadShape {
-  const v = process.env.KIRO_ADAPTIVE_PAYLOAD_SHAPE as AdaptivePayloadShape | undefined;
-  return v && PAYLOAD_SHAPES.includes(v) ? v : "top-level-wrapper";
+  const value = process.env.KIRO_ADAPTIVE_PAYLOAD_SHAPE as AdaptivePayloadShape | undefined;
+  return value && PAYLOAD_SHAPES.includes(value) ? value : "top-level-wrapper";
 }
 
-/** Which fields to include in the adaptive payload (default full; effort-only is the minimal kiro-cli shape). */
 export function getAdaptiveFieldSet(): AdaptiveFieldSet {
   return process.env.KIRO_ADAPTIVE_FIELDS === "effort-only" ? "effort-only" : "full";
 }
 
-export function mapOmpEffortToKiroEffort(modelId: string, effort: OmpEffort | undefined): KiroEffort | undefined {
-  const cfg = KIRO_ADAPTIVE_MODELS[modelId];
-  if (!cfg) return undefined;
-  return cfg.effortMap[effort ?? cfg.defaultOmpEffort];
+function mapEffort(model: Pick<Model<Api>, "thinking">, requested: OmpEffort | undefined): string | undefined {
+  const thinking = model.thinking;
+  if (!thinking || thinking.efforts.length === 0) return undefined;
+  const defaultEffort = thinking.defaultLevel as OmpEffort | undefined;
+  const selected = requested ?? defaultEffort ?? "medium";
+  const mapped = thinking.effortMap?.[selected];
+  if (mapped) return mapped;
+  if ((thinking.efforts as readonly string[]).includes(selected)) return selected;
+
+  const selectedIndex = OMP_EFFORT_ORDER.indexOf(selected);
+  const supported = thinking.efforts as readonly OmpEffort[];
+  for (let index = Math.max(selectedIndex, 0); index < OMP_EFFORT_ORDER.length; index += 1) {
+    const candidate = OMP_EFFORT_ORDER[index];
+    if (supported.includes(candidate)) return thinking.effortMap?.[candidate] ?? candidate;
+  }
+  const highest = supported.at(-1);
+  return highest ? (thinking.effortMap?.[highest] ?? highest) : undefined;
 }
 
-/**
- * Build the adaptive-thinking payload for a model + OMP effort, honoring the
- * opt-in flag and the field-set knob. Returns undefined when adaptive thinking
- * is disabled (default), the model is not adaptive, or no effort can be mapped.
- */
-export function buildKiroAdaptiveThinkingPayload(
-  modelId: string,
+/** Build provider-specific request fields from metadata that survives OMP's SQLite model cache. */
+export function buildKiroModelRequestFields(
+  model: Pick<Model<Api>, "thinking" | "maxTokens">,
   ompEffort: OmpEffort | undefined,
-): KiroAdaptivePayload | undefined {
-  if (!isAdaptiveThinkingEnabled()) return undefined;
-  const cfg = KIRO_ADAPTIVE_MODELS[modelId];
-  if (!cfg) return undefined;
-  const effort = cfg.effortMap[ompEffort ?? cfg.defaultOmpEffort];
-  if (getAdaptiveFieldSet() === "effort-only") {
-    return { output_config: { effort } };
+): KiroModelRequestFields | undefined {
+  if (!model.thinking) return undefined;
+  const effort = mapEffort(model, ompEffort);
+  if (!effort) return undefined;
+
+  if (model.thinking.mode === "anthropic-adaptive") {
+    if (!isAdaptiveThinkingEnabled()) return undefined;
+    const output_config = { effort: effort as KiroAnthropicEffort };
+    if (getAdaptiveFieldSet() === "effort-only") return { output_config };
+    return {
+      thinking: { type: "adaptive", display: "summarized" },
+      output_config,
+      max_tokens: model.maxTokens ?? undefined,
+    };
   }
-  return {
-    thinking: { type: "adaptive", display: "summarized" },
-    output_config: { effort },
-    max_tokens: cfg.maxTokens,
-  };
+
+  if (model.thinking.mode === "effort") {
+    return {
+      reasoning: {
+        mode: "standard",
+        effort: effort as KiroGptEffort,
+      },
+    };
+  }
+
+  return undefined;
 }

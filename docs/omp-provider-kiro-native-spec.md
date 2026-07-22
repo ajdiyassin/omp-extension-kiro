@@ -1,5 +1,8 @@
 # Spec: Convert `ajdiyassin/omp-provider-kiro` into an OMP-native Kiro provider extension
 
+> **Historical specification:** the original static provider registration described here is superseded by `fetchDynamicModels` and OMP's SQLite model cache. See `README.md` and `AGENTS.md` for the current architecture.
+
+
 ## Goal
 
 Convert the forked Kiro provider from a PI-oriented extension into a clean OMP-native extension that installs and loads in OMP without manual `dist/index.js` patching, dependency junctions, or runtime resolver hacks.

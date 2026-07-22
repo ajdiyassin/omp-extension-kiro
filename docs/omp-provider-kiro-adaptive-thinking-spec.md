@@ -1,5 +1,8 @@
 # Spec: Migrate `omp-provider-kiro` to the Current Kiro API + Adaptive Thinking
 
+> **Historical specification:** hardcoded adaptive model tables in this document are superseded by live Kiro schema mapping through OMP-native dynamic discovery. See `README.md`, `AGENTS.md`, and `docs/kiro-model-discovery-research.md`.
+
+
 Repo: https://github.com/ajdiyassin/omp-provider-kiro
 
 > **Status:** Rewritten 2026-06-12 after capturing real `kiro-cli` (AmazonQ-For-CLI 2.6.1)
