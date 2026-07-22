@@ -29,6 +29,7 @@
     "format": "biome format --write .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "probe:models": "esbuild scripts/probe-list-models.ts --bundle --platform=node --format=esm --outfile=scripts/probe-list-models.mjs --packages=bundle && node scripts/probe-list-models.mjs",
     "prepack": "npm run check && npm test && npm run build",
     "prepublishOnly": "npm run check && npm run test && npm run build"
   },
