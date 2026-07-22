@@ -95,10 +95,20 @@ export function normalizeMessages(messages: Message[]): Message[] {
   });
 }
 
+function isImageContent(content: unknown): content is ImageContent {
+  if (typeof content !== "object" || content === null) return false;
+  const candidate = content as Partial<ImageContent>;
+  return candidate.type === "image" && typeof candidate.data === "string" && typeof candidate.mimeType === "string";
+}
+
 export function extractImages(msg: Message): ImageContent[] {
   if (msg.role === "toolResult" || typeof msg.content === "string") return [];
   if (!Array.isArray(msg.content)) return [];
-  return msg.content.filter((c): c is ImageContent => c.type === "image");
+  const images: ImageContent[] = [];
+  for (const content of msg.content) {
+    if (isImageContent(content)) images.push(content);
+  }
+  return images;
 }
 
 export function getContentText(msg: Message): string {

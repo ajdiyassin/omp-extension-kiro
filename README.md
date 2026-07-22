@@ -6,7 +6,7 @@ Fork of [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provide
 
 ## Requirements
 
-- **OMP** ≥ 15.11.0
+- **OMP** ≥ 17.0.7
 - **Kiro CLI** (recommended for credential reuse) — [install guide](https://kiro.dev/docs/cli/)
 
 ## Install
