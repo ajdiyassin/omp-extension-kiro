@@ -6,7 +6,7 @@ Fork of [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provide
 
 ## Requirements
 
-- **OMP** ≥ 17.0.7
+- **OMP** ≥ 17.0.9
 - **Kiro CLI** (recommended for credential reuse) — [install guide](https://kiro.dev/docs/cli/)
 
 ## Install
@@ -161,6 +161,10 @@ OMP `minimal` maps to GPT `none`; other advertised levels are preserved. Kiro's 
 | `KIRO_ADAPTIVE_PAYLOAD_SHAPE` | `top-level-wrapper` | `top-level-wrapper`, `top-level-direct`, `user-input-message`, or `user-input-context` |
 
 The Kiro runtime accepts `windows`, `macos`, or `linux` for `envState.operatingSystem`; the extension maps Node's `win32` value to `windows`.
+
+## Native usage telemetry
+
+When Kiro reports stream metrics, the extension maps real input, output, cache-read, cache-creation, and reasoning-token counts into OMP's native usage metadata. OMP uses the measured full-call duration and time to first model output to render TTFT and tokens/second. Missing input/output metrics retain the existing context-percentage/tokenizer fallbacks; cache hits are never estimated, so the cache indicator appears only for provider-reported cache reads.
 
 ## API endpoints
 

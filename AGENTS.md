@@ -6,7 +6,7 @@
 
 OMP provider extension for Kiro's management and streaming APIs. It uses OMP-native dynamic model discovery, supports API-key and OAuth/Kiro CLI authentication, converts live Kiro request schemas into canonical OMP thinking metadata, and bundles as a self-contained ESM extension.
 
-Minimum supported OMP version: **17.0.7**.
+Minimum supported OMP version: **17.0.9**.
 
 ## Source map
 
@@ -100,6 +100,8 @@ Never use unrelated local CLI routing metadata for an explicit bearer; access to
 - 413/context-length errors are surfaced immediately for OMP compaction handling.
 - Provider-local retries are limited to auth refresh, capacity errors, first-token/idle timeout, and known empty-response quirks.
 - First-token timeout is a provider-wide policy because discovery supplies no per-model timeout metadata.
+- Provider-reported usage metrics override input/output estimates field-by-field; cache tokens are never estimated.
+- `duration` covers the complete provider call, while `ttft` starts at invocation and ends at the first non-empty model output—not metadata or framing bytes.
 
 ## Development
 

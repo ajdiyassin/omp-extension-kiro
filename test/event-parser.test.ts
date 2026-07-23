@@ -60,10 +60,20 @@ describe("Feature 8: Stream Event Parsing", () => {
 
     it("parses reasoningContentEvent with signature", () => {
       expect(
-        parseKiroEvent({ signature: "ErUDCmMIDxABGAIqQIJqm4WKIDMBZf0TxmYU/XvJYi6yxr2zS68elaTxB3OHtorU4pUZ+doX5rQPfP1rzhDX+UKzLtJmR1kRV8Izu1IyDWNsYXVkZS1xdWluY2U4AEIIdGhpbmtpbmcSDEBTBDtqL7l5T+TGnxoM1X544B+2o6KPO2oDIjDkGc+j2hFjPZPTWod3q+li05Mbz0Y3jevF72ReYsZcQEPQf0fKBkgnrFKBS2T9rscq/wFm2Ziu0gIqTKNGhm1Gn8H7ZLkeMMe4QguMgklrqxzVJZS+XhSJ/zeTsF3BQg2R5rqZ4wSHP7Iwvnp3RRIshK59E7CZjFjG6OYje2FYSjrsvjPEqRV3wwNJhuEk5Y/UJaiNEBjHIRqhhQ/kyanF5FmN2RHAV4d/yKtiVm28eousAdqyCydZ0Gpn08MJ2O65fViYAJENGku97yTA9UBD53EISqwTUSskOcuLXMUS0FpuMMQgjya8UUfok0kKNqzfLb6kuYAJbA9WJReHIP2SMnDoWGRF65fJgEhGckgAEqJqil3YaHRymwAFK8ccaU6Dba/AYR7Cdqjy0TkCremDxaUYAQ==" }, "reasoningContentEvent"),
+        parseKiroEvent(
+          {
+            signature:
+              "ErUDCmMIDxABGAIqQIJqm4WKIDMBZf0TxmYU/XvJYi6yxr2zS68elaTxB3OHtorU4pUZ+doX5rQPfP1rzhDX+UKzLtJmR1kRV8Izu1IyDWNsYXVkZS1xdWluY2U4AEIIdGhpbmtpbmcSDEBTBDtqL7l5T+TGnxoM1X544B+2o6KPO2oDIjDkGc+j2hFjPZPTWod3q+li05Mbz0Y3jevF72ReYsZcQEPQf0fKBkgnrFKBS2T9rscq/wFm2Ziu0gIqTKNGhm1Gn8H7ZLkeMMe4QguMgklrqxzVJZS+XhSJ/zeTsF3BQg2R5rqZ4wSHP7Iwvnp3RRIshK59E7CZjFjG6OYje2FYSjrsvjPEqRV3wwNJhuEk5Y/UJaiNEBjHIRqhhQ/kyanF5FmN2RHAV4d/yKtiVm28eousAdqyCydZ0Gpn08MJ2O65fViYAJENGku97yTA9UBD53EISqwTUSskOcuLXMUS0FpuMMQgjya8UUfok0kKNqzfLb6kuYAJbA9WJReHIP2SMnDoWGRF65fJgEhGckgAEqJqil3YaHRymwAFK8ccaU6Dba/AYR7Cdqjy0TkCremDxaUYAQ==",
+          },
+          "reasoningContentEvent",
+        ),
       ).toEqual({
         type: "reasoning",
-        data: { text: undefined, signature: "ErUDCmMIDxABGAIqQIJqm4WKIDMBZf0TxmYU/XvJYi6yxr2zS68elaTxB3OHtorU4pUZ+doX5rQPfP1rzhDX+UKzLtJmR1kRV8Izu1IyDWNsYXVkZS1xdWluY2U4AEIIdGhpbmtpbmcSDEBTBDtqL7l5T+TGnxoM1X544B+2o6KPO2oDIjDkGc+j2hFjPZPTWod3q+li05Mbz0Y3jevF72ReYsZcQEPQf0fKBkgnrFKBS2T9rscq/wFm2Ziu0gIqTKNGhm1Gn8H7ZLkeMMe4QguMgklrqxzVJZS+XhSJ/zeTsF3BQg2R5rqZ4wSHP7Iwvnp3RRIshK59E7CZjFjG6OYje2FYSjrsvjPEqRV3wwNJhuEk5Y/UJaiNEBjHIRqhhQ/kyanF5FmN2RHAV4d/yKtiVm28eousAdqyCydZ0Gpn08MJ2O65fViYAJENGku97yTA9UBD53EISqwTUSskOcuLXMUS0FpuMMQgjya8UUfok0kKNqzfLb6kuYAJbA9WJReHIP2SMnDoWGRF65fJgEhGckgAEqJqil3YaHRymwAFK8ccaU6Dba/AYR7Cdqjy0TkCremDxaUYAQ==" },
+        data: {
+          text: undefined,
+          signature:
+            "ErUDCmMIDxABGAIqQIJqm4WKIDMBZf0TxmYU/XvJYi6yxr2zS68elaTxB3OHtorU4pUZ+doX5rQPfP1rzhDX+UKzLtJmR1kRV8Izu1IyDWNsYXVkZS1xdWluY2U4AEIIdGhpbmtpbmcSDEBTBDtqL7l5T+TGnxoM1X544B+2o6KPO2oDIjDkGc+j2hFjPZPTWod3q+li05Mbz0Y3jevF72ReYsZcQEPQf0fKBkgnrFKBS2T9rscq/wFm2Ziu0gIqTKNGhm1Gn8H7ZLkeMMe4QguMgklrqxzVJZS+XhSJ/zeTsF3BQg2R5rqZ4wSHP7Iwvnp3RRIshK59E7CZjFjG6OYje2FYSjrsvjPEqRV3wwNJhuEk5Y/UJaiNEBjHIRqhhQ/kyanF5FmN2RHAV4d/yKtiVm28eousAdqyCydZ0Gpn08MJ2O65fViYAJENGku97yTA9UBD53EISqwTUSskOcuLXMUS0FpuMMQgjya8UUfok0kKNqzfLb6kuYAJbA9WJReHIP2SMnDoWGRF65fJgEhGckgAEqJqil3YaHRymwAFK8ccaU6Dba/AYR7Cdqjy0TkCremDxaUYAQ==",
+        },
       });
     });
 
@@ -94,6 +104,113 @@ describe("Feature 8: Stream Event Parsing", () => {
       });
     });
 
+    it.each([
+      ["metricsEvent", { metricsEvent: { inputTokens: 1 } }],
+      ["metrics", { metrics: { outputTokens: 2 } }],
+      ["usageEvent", { usageEvent: { cacheReadTokens: 3 } }],
+    ])("parses nested %s usage envelopes", (_name, payload) => {
+      expect(parseKiroEvent(payload)).toMatchObject({ type: "usage" });
+    });
+
+    it("normalizes all usage fields and camelCase aliases", () => {
+      expect(
+        parseKiroEvent({
+          metricsEvent: {
+            inputTokens: 100,
+            outputTokens: 40,
+            cacheReadTokens: 50,
+            cacheCreationTokens: 10,
+            reasoningTokens: 12,
+          },
+        }),
+      ).toEqual({
+        type: "usage",
+        data: {
+          inputTokens: 100,
+          outputTokens: 40,
+          cacheReadTokens: 50,
+          cacheCreationTokens: 10,
+          reasoningTokens: 12,
+        },
+      });
+    });
+
+    it("normalizes snake_case and alternate token aliases", () => {
+      expect(
+        parseKiroEvent({
+          metrics: {
+            prompt_tokens: 11,
+            completion_tokens: 12,
+            cache_read_tokens: 13,
+            cache_write_tokens: 14,
+            reasoning_tokens: 5,
+          },
+        }),
+      ).toEqual({
+        type: "usage",
+        data: {
+          inputTokens: 11,
+          outputTokens: 12,
+          cacheReadTokens: 13,
+          cacheCreationTokens: 14,
+          reasoningTokens: 5,
+        },
+      });
+      expect(
+        parseKiroEvent({
+          usageEvent: {
+            promptTokens: 21,
+            completionTokens: 22,
+            cacheReadInputTokens: 23,
+            cacheCreationInputTokens: 24,
+            reasoningOutputTokens: 6,
+          },
+        }),
+      ).toEqual({
+        type: "usage",
+        data: {
+          inputTokens: 21,
+          outputTokens: 22,
+          cacheReadTokens: 23,
+          cacheCreationTokens: 24,
+          reasoningTokens: 6,
+        },
+      });
+    });
+
+    it("parses a flat metricsEvent frame and preserves zero values", () => {
+      expect(
+        parseKiroEvent(
+          { input_tokens: 0, output_tokens: 0, cachedTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0 },
+          "metricsEvent",
+        ),
+      ).toEqual({
+        type: "usage",
+        data: {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          reasoningTokens: 0,
+        },
+      });
+    });
+
+    it("omits invalid metrics without coercion and rejects empty metric objects", () => {
+      expect(
+        parseKiroEvent({
+          metricsEvent: {
+            inputTokens: "100",
+            outputTokens: -1,
+            cacheReadTokens: Number.NaN,
+            cacheCreationTokens: Number.POSITIVE_INFINITY,
+            reasoningTokens: 2,
+          },
+        }),
+      ).toEqual({ type: "usage", data: { reasoningTokens: 2 } });
+      expect(parseKiroEvent({ metricsEvent: { inputTokens: "100", outputTokens: -1 } })).toBeNull();
+    });
+
     it("returns null for unrecognized shape", () => {
       expect(parseKiroEvent({ unknown: true })).toBeNull();
     });
@@ -115,7 +232,7 @@ describe("Feature 8: Stream Event Parsing", () => {
 
   describe("extractEventType", () => {
     it("returns undefined when event-type header not found", () => {
-      const buffer = "{\"text\":\"hello\"}";
+      const buffer = '{"text":"hello"}';
       const jsonStart = 0;
       const eventType = extractEventType(buffer, jsonStart);
       expect(eventType).toBeUndefined();
@@ -132,8 +249,7 @@ describe("Feature 8: Stream Event Parsing", () => {
 
     it("extracts assistantResponseEvent from the eventstream header", () => {
       const buffer =
-        ":event-type\x07\x00\x14assistantResponseEvent:content-type\x07\x00\x10application/json" +
-        '{"content":"Hi"}';
+        ":event-type\x07\x00\x14assistantResponseEvent:content-type\x07\x00\x10application/json" + '{"content":"Hi"}';
       const jsonStart = buffer.indexOf('{"content"');
       expect(extractEventType(buffer, jsonStart)).toBe("assistantResponseEvent");
     });
@@ -195,11 +311,58 @@ describe("Feature 8: Stream Event Parsing", () => {
       expect(events[0]).toEqual({ type: "usage", data: { inputTokens: 100, outputTokens: 50 } });
     });
 
+    it("discovers nested and flat metrics payloads, including a payload split across chunks", () => {
+      const nested = parseKiroEvents(
+        '{"metricsEvent":{"inputTokens":100,"cacheReadTokens":50}}' +
+          '{"metrics":{"output_tokens":40}}' +
+          '{"usageEvent":{"cache_write_tokens":10}}',
+      );
+      expect(nested.events).toEqual([
+        { type: "usage", data: { inputTokens: 100, cacheReadTokens: 50 } },
+        { type: "usage", data: { outputTokens: 40 } },
+        { type: "usage", data: { cacheCreationTokens: 10 } },
+      ]);
+
+      const header = ":event-type\x07\x00\x0cmetricsEvent:content-type\x07\x00\x10application/json";
+      const first = parseKiroEvents(`${header}{"input_tokens":100,"output_`);
+      expect(first.events).toEqual([]);
+      const second = parseKiroEvents(`${first.remaining}tokens":40,"reasoning_tokens":12}`);
+      expect(second.events).toEqual([
+        { type: "usage", data: { inputTokens: 100, outputTokens: 40, reasoningTokens: 12 } },
+      ]);
+    });
+
     it("parses error event", () => {
       const buffer = '{"error":"Invalid request","message":"Missing field"}';
       const { events } = parseKiroEvents(buffer);
       expect(events).toHaveLength(1);
       expect(events[0]).toEqual({ type: "error", data: { error: "Invalid request", message: "Missing field" } });
+    });
+
+    it("preserves metrics frames split inside their first recognized key", () => {
+      const flatFirst = parseKiroEvents(
+        ':event-type\x07\x00\x0cmetricsEvent:content-type\x07\x00\x10application/json{"input_tok',
+      );
+      expect(flatFirst.events).toEqual([]);
+      expect(flatFirst.remaining).toContain('{"input_tok');
+      expect(parseKiroEvents(`${flatFirst.remaining}ens":9}`).events).toEqual([
+        { type: "usage", data: { inputTokens: 9 } },
+      ]);
+
+      const wrappedFirst = parseKiroEvents('{"metricsEv');
+      expect(wrappedFirst).toEqual({ events: [], remaining: '{"metricsEv' });
+      expect(parseKiroEvents(`${wrappedFirst.remaining}ent":{"cacheReadTokens":4}}`).events).toEqual([
+        { type: "usage", data: { cacheReadTokens: 4 } },
+      ]);
+
+      const priorHeader = ":event-type\x07\x00\x14assistantResponseEvent:content-type\x07\x00\x10application/json";
+      const metricsHeader = ":event-type\x07\x00\x0cmetricsEvent:content-type\x07\x00\x10application/json";
+      const afterCompleteEvent = parseKiroEvents(`${priorHeader}{"content":"first"}${metricsHeader}{"metricsEv`);
+      expect(afterCompleteEvent.events).toEqual([{ type: "content", data: "first", stopReason: undefined }]);
+      expect(afterCompleteEvent.remaining).toBe(`${metricsHeader}{"metricsEv`);
+      expect(parseKiroEvents(`${afterCompleteEvent.remaining}ent":{"outputTokens":3}}`).events).toEqual([
+        { type: "usage", data: { outputTokens: 3 } },
+      ]);
     });
 
     it("handles mixed event types", () => {

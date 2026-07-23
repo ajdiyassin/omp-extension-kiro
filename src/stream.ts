@@ -30,7 +30,7 @@ import {
 import { clearAuthMeta, readAuthMeta, writeAuthMeta } from "./auth-meta.js";
 import { parseBracketToolCalls } from "./bracket-tool-parser.js";
 import { debugEnabled, debugLog } from "./debug.js";
-import { parseKiroEvents } from "./event-parser.js";
+import { type KiroUsageData, parseKiroEvents } from "./event-parser.js";
 import { createAssistantMessageEventStream } from "./event-stream.js";
 import { addPlaceholderTools, HISTORY_LIMIT, HISTORY_LIMIT_CONTEXT_WINDOW, truncateHistory } from "./history.js";
 import {
@@ -296,6 +296,15 @@ export function streamKiro(
   context: Context,
   options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
+  const startTime = performance.now();
+  let firstOutputTime: number | undefined;
+  const markFirstOutput = () => {
+    firstOutputTime ??= performance.now();
+  };
+  const finalizeTiming = (output: AssistantMessage) => {
+    output.duration = performance.now() - startTime;
+    if (firstOutputTime !== undefined) output.ttft = firstOutputTime - startTime;
+  };
   const stream = createAssistantMessageEventStream();
   (async () => {
     const output: AssistantMessage = {
@@ -673,8 +682,7 @@ export function streamKiro(
               // Refresh only the credential that exactly matches the bearer that received the 403.
               // Unrelated option/local credentials must never switch the active account.
               const candidates = (usingApiKey ? [] : [optionCreds, matchingCliCreds]).filter(
-                (candidate): candidate is KiroCredentials =>
-                  !!candidate?.refresh && candidate.access === accessToken,
+                (candidate): candidate is KiroCredentials => !!candidate?.refresh && candidate.access === accessToken,
               );
 
               let freshCreds: KiroCredentials | undefined;
@@ -733,7 +741,7 @@ export function streamKiro(
         let buffer = "";
         let totalContent = "";
         let lastContentData = "";
-        let usageEvent: { inputTokens?: number; outputTokens?: number } | null = null;
+        const usageMetrics: KiroUsageData = {};
         let receivedContextUsage = false;
         const thinkingParser = model.reasoning ? new ThinkingTagParser(output, stream) : null;
         let textBlockIndex: number | null = null;
@@ -813,6 +821,7 @@ export function streamKiro(
                   // signature; captured and applied to the thinking block on
                   // end (M1 acceptance: "with the trailing signature attached").
                   if (text || signature !== undefined) {
+                    if (text) markFirstOutput();
                     thinkingParser.emitReasoning(text ?? "", signature);
                   }
                 }
@@ -833,6 +842,7 @@ export function streamKiro(
                 const contentData = event.data;
                 if (contentData === lastContentData) continue;
                 lastContentData = contentData;
+                if (contentData) markFirstOutput();
                 totalContent += contentData;
                 if (thinkingParser) {
                   // Close the native-reasoning block before the first content
@@ -864,6 +874,7 @@ export function streamKiro(
               }
               case "toolUse": {
                 const tc = event.data;
+                markFirstOutput();
                 sawAnyToolCalls = true;
                 if (!currentToolCall || currentToolCall.toolUseId !== tc.toolUseId) {
                   flushToolCall();
@@ -875,6 +886,7 @@ export function streamKiro(
                 break;
               }
               case "toolUseInput": {
+                if (event.data.input) markFirstOutput();
                 if (currentToolCall) currentToolCall.input += event.data.input || "";
                 if (event.data.input) totalContent += event.data.input;
                 break;
@@ -884,7 +896,7 @@ export function streamKiro(
                 break;
               }
               case "usage": {
-                usageEvent = event.data;
+                Object.assign(usageMetrics, event.data);
                 break;
               }
               case "error": {
@@ -960,17 +972,24 @@ export function streamKiro(
             content: (output.content[textBlockIndex] as TextContent).text,
             partial: output,
           });
-        // The Kiro streaming API does not reliably emit per-response output
-        // token counts (unlike Anthropic's `output_tokens` or Bedrock's
-        // `usage.outputTokens`). When the `usage` event is missing or only
-        // reports `inputTokens`, fall back to a tiktoken estimate over
-        // everything the assistant emitted — text plus tool-call input JSON
-        // (accumulated into `totalContent` above). Otherwise tool-call-only
-        // turns report 0 output tokens and break consumers like the TPS
-        // extension that watch `usage.output`.
-        if (usageEvent?.inputTokens !== undefined) output.usage.input = usageEvent.inputTokens;
-        output.usage.output = usageEvent?.outputTokens ?? countTokens(totalContent);
-        output.usage.totalTokens = output.usage.input + output.usage.output;
+        // Prefer provider-reported metrics field-by-field. Kiro does not
+        // reliably report every bucket, so retain the existing context and
+        // tokenizer estimates only for missing input/output values. Cache
+        // tokens are never estimated.
+        if (usageMetrics.inputTokens !== undefined) output.usage.input = usageMetrics.inputTokens;
+        output.usage.output = usageMetrics.outputTokens ?? countTokens(totalContent);
+        output.usage.cacheRead = usageMetrics.cacheReadTokens ?? 0;
+        output.usage.cacheWrite = usageMetrics.cacheCreationTokens ?? 0;
+        output.usage.totalTokens =
+          output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
+        if (usageMetrics.reasoningTokens !== undefined && usageMetrics.reasoningTokens <= output.usage.output) {
+          output.usage.reasoningTokens = usageMetrics.reasoningTokens;
+        } else if (usageMetrics.reasoningTokens !== undefined) {
+          debugLog("response.invalid-reasoning-usage", {
+            reasoningTokens: usageMetrics.reasoningTokens,
+            outputTokens: output.usage.output,
+          });
+        }
         // All Kiro models are zero cost
         output.usage.cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
         // Detect degenerate responses: the API returned 200 but produced no
@@ -1033,6 +1052,7 @@ export function streamKiro(
         } else {
           output.stopReason = emittedToolCalls > 0 ? "toolUse" : "stop";
         }
+        finalizeTiming(output);
         stream.push({ type: "done", reason: output.stopReason as "stop" | "toolUse", message: output });
         debugLog("response.done", {
           stopReason: output.stopReason,
@@ -1049,6 +1069,7 @@ export function streamKiro(
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
       output.errorMessage = error instanceof Error ? error.message : String(error);
       debugLog("response.caught", { stopReason: output.stopReason, error: output.errorMessage });
+      finalizeTiming(output);
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();
     }

@@ -757,6 +757,153 @@ describe("Feature 9: Streaming Integration", () => {
     vi.unstubAllGlobals();
   });
 
+  it("maps Kiro metrics into native usage and deterministic duration/TTFT", async () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(150).mockReturnValueOnce(300);
+    const mockFetch = mockFetchOk(
+      '{"metricsEvent":{"inputTokens":100,"outputTokens":40,"cacheReadTokens":50,"cacheCreationTokens":10,"reasoningTokens":12}}' +
+        '{"content":"answer"}',
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const events = await collect(streamKiro(makeModel({ reasoning: false }), makeContext(), { apiKey: "tok" }));
+    const done = events.find((event) => event.type === "done");
+    const msg = done?.type === "done" ? done.message : undefined;
+    expect(msg?.usage).toEqual({
+      input: 100,
+      output: 40,
+      cacheRead: 50,
+      cacheWrite: 10,
+      totalTokens: 200,
+      reasoningTokens: 12,
+      cost: zeroUsage.cost,
+    });
+    expect(msg?.duration).toBe(200);
+    expect(msg?.ttft).toBe(50);
+    expect(now).toHaveBeenCalledTimes(3);
+
+    now.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("marks TTFT on reasoning text but not metrics or empty signature frames", async () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(175).mockReturnValueOnce(260);
+    const header = (name: string) =>
+      `:event-type\x07\x00${String.fromCharCode(name.length)}${name}:content-type\x07\x00\x10application/json`;
+    const mockFetch = mockFetchChunked([
+      '{"metricsEvent":{"inputTokens":10}}',
+      `${header("reasoningContentEvent")}{"signature":"opaque-signature"}`,
+      `${header("reasoningContentEvent")}{"text":"reasoning"}`,
+      '{"content":"answer"}',
+    ]);
+    vi.stubGlobal("fetch", mockFetch);
+
+    const events = await collect(streamKiro(makeModel({ reasoning: true }), makeContext(), { apiKey: "tok" }));
+    const done = events.find((event) => event.type === "done");
+    const msg = done?.type === "done" ? done.message : undefined;
+    expect(msg?.ttft).toBe(75);
+    expect(msg?.duration).toBe(160);
+    expect(now).toHaveBeenCalledTimes(3);
+
+    now.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("marks TTFT when a tool-use start is the first model output", async () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(5).mockReturnValueOnce(25).mockReturnValueOnce(80);
+    const mockFetch = mockFetchOk(
+      '{"metrics":{"inputTokens":10}}' +
+        '{"name":"read","toolUseId":"tool_1","input":"{\\"path\\":\\"README.md\\"}","stop":true}',
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const events = await collect(streamKiro(makeModel({ reasoning: false }), makeContext(), { apiKey: "tok" }));
+    const done = events.find((event) => event.type === "done");
+    const msg = done?.type === "done" ? done.message : undefined;
+    expect(msg?.ttft).toBe(20);
+    expect(msg?.duration).toBe(75);
+    expect(done?.type === "done" && done.reason).toBe("toolUse");
+
+    now.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("merges partial metrics and retains per-field input/output fallbacks", async () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(10).mockReturnValueOnce(20).mockReturnValueOnce(40);
+    const mockFetch = mockFetchOk(
+      '{"metricsEvent":{"cacheReadTokens":5,"reasoningTokens":99}}' +
+        '{"metrics":{"cacheCreationTokens":7}}' +
+        '{"contextUsagePercentage":10}' +
+        '{"content":"fallback output"}',
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const events = await collect(streamKiro(makeModel({ reasoning: false }), makeContext(), { apiKey: "tok" }));
+    const done = events.find((event) => event.type === "done");
+    const msg = done?.type === "done" ? done.message : undefined;
+    expect(msg?.usage.input).toBe(20000);
+    expect(msg?.usage.output).toBeGreaterThan(0);
+    expect(msg?.usage.cacheRead).toBe(5);
+    expect(msg?.usage.cacheWrite).toBe(7);
+    expect(msg?.usage.reasoningTokens).toBeUndefined();
+    expect(msg?.usage.totalTokens).toBe(
+      (msg?.usage.input ?? 0) + (msg?.usage.output ?? 0) + (msg?.usage.cacheRead ?? 0) + (msg?.usage.cacheWrite ?? 0),
+    );
+    expect((msg?.usage as unknown as Record<string, unknown>)?.contextPercent).toBe(10);
+
+    now.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("adds duration without TTFT when an error occurs before model output", async () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(240);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: () => Promise.resolve("invalid"),
+      }),
+    );
+
+    const events = await collect(streamKiro(makeModel(), makeContext(), { apiKey: "tok" }));
+    const error = events.find((event) => event.type === "error");
+    const msg = error?.type === "error" ? error.error : undefined;
+    expect(msg?.duration).toBe(140);
+    expect(msg?.ttft).toBeUndefined();
+
+    now.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("adds duration and TTFT when an error occurs after model output", async () => {
+    const now = vi.spyOn(performance, "now").mockReturnValueOnce(100).mockReturnValueOnce(130).mockReturnValueOnce(220);
+    const ac = new AbortController();
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode('{"content":"partial"}') })
+      .mockImplementationOnce(() => {
+        ac.abort();
+        return Promise.reject(new DOMException("aborted", "AbortError"));
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, body: { getReader: () => ({ read, cancel: vi.fn() }) } }),
+    );
+
+    const events = await collect(
+      streamKiro(makeModel({ reasoning: false }), makeContext(), { apiKey: "tok", signal: ac.signal }),
+    );
+    const error = events.find((event) => event.type === "error");
+    const msg = error?.type === "error" ? error.error : undefined;
+    expect(msg?.duration).toBe(120);
+    expect(msg?.ttft).toBe(30);
+    expect((msg?.duration ?? 0) >= (msg?.ttft ?? 0)).toBe(true);
+
+    now.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
   // =========================================================================
   // Abort mid-stream (pi-mono: abort.test.ts testAbortSignal)
   // =========================================================================
@@ -2267,11 +2414,36 @@ describe("Feature 9: Streaming Integration", () => {
     // Usage event values should take precedence
     expect(msg?.usage.input).toBe(500);
     expect(msg?.usage.output).toBe(200);
+    expect(msg?.usage.cacheRead).toBe(0);
+    expect(msg?.usage.cacheWrite).toBe(0);
     expect(msg?.usage.totalTokens).toBe(700);
 
     // contextPercent should still reflect the API's contextUsagePercentage,
     // not be derived from the (overwritten) input token count
     expect((msg?.usage as Record<string, unknown>).contextPercent).toBe(10);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("merges multiple partial usage events with last-defined-field precedence", async () => {
+    const mockFetch = mockFetchOk(
+      '{"metricsEvent":{"inputTokens":100,"cacheReadTokens":50}}' +
+        '{"usageEvent":{"outputTokens":40,"cacheCreationTokens":10}}' +
+        '{"metrics":{"inputTokens":125}}' +
+        '{"content":"answer"}',
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const events = await collect(streamKiro(makeModel({ reasoning: false }), makeContext(), { apiKey: "tok" }));
+    const done = events.find((event) => event.type === "done");
+    const msg = done?.type === "done" ? done.message : undefined;
+    expect(msg?.usage).toMatchObject({
+      input: 125,
+      output: 40,
+      cacheRead: 50,
+      cacheWrite: 10,
+      totalTokens: 225,
+    });
 
     vi.unstubAllGlobals();
   });
@@ -2949,10 +3121,11 @@ describe("tool-use ID normalization (cross-provider sessions)", () => {
         getReader: () => {
           let done = false;
           return {
-            read: () =>
-              done
-                ? Promise.resolve({ done: true, value: undefined })
-                : ((done = true), Promise.resolve({ done: false, value: new TextEncoder().encode(body) })),
+            read: () => {
+              if (done) return Promise.resolve({ done: true, value: undefined });
+              done = true;
+              return Promise.resolve({ done: false, value: new TextEncoder().encode(body) });
+            },
           };
         },
       },
