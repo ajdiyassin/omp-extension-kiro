@@ -6,7 +6,7 @@
 
 OMP provider extension for Kiro's management and streaming APIs. It uses OMP-native dynamic model discovery, supports API-key and OAuth/Kiro CLI authentication, converts live Kiro request schemas into canonical OMP thinking metadata, and bundles as a self-contained ESM extension.
 
-Minimum supported OMP version: **17.0.9**. Validated against OMP **17.1.3**.
+Minimum supported OMP version: **17.0.9**. Validated against OMP **17.1.4**.
 
 ## Source map
 
@@ -30,7 +30,9 @@ Minimum supported OMP version: **17.0.9**. Validated against OMP **17.1.3**.
 `src/index.ts` registers `fetchDynamicModels`; do not add a static `models` array. OMP owns:
 
 - A 15-second extension discovery timeout
-- A 24-hour SQLite model cache
+- A 24-hour SQLite model cache for authoritative catalogs; an empty-but-successful
+  discovery response is treated as non-authoritative and retried after a short
+  interval instead of being cached for the full TTL (OMP 17.1.4+)
 - Startup background refresh
 - Provider refresh from `/model`
 - Retention of cached models when refresh fails

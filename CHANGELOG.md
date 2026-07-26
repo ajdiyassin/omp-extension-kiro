@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Changed
 
-- Upgraded the pinned `@oh-my-pi/pi-ai` and `@oh-my-pi/pi-coding-agent` dev dependencies from `17.0.9` to `17.1.3`. The minimum supported OMP version remains `17.0.9`. No source changes were required: 17.1.x introduced no breaking changes to the typed provider-extension API surface, and the extension type-checks and passes its full test suite unchanged against 17.1.3.
+- Upgraded the pinned `@oh-my-pi/pi-ai` and `@oh-my-pi/pi-coding-agent` dev dependencies from `17.0.9` to `17.1.4`. The minimum supported OMP version remains `17.0.9`. No source changes were required: 17.1.x introduced no breaking changes to the typed provider-extension API surface, and the extension type-checks and passes its full test suite unchanged against 17.1.4.
+- Documented the OMP 17.1.4 discovery-cache refinement in `AGENTS.md`: an empty-but-successful discovery response is now treated as non-authoritative and retried after a short interval rather than cached for the full 24-hour TTL. This extension's fail-closed contract (throw rather than return a partial or empty catalog) remains the correct behaviour under that change.
 - Documentation now describes this project as standalone. `README.md` no longer frames it as a fork, `RELEASE.md` points at this repository and records that the `omp-provider-kiro` npm package is not yet published, and prior `pi-provider-kiro` releases moved to a clearly separated `Pre-fork history` section whose version numbers are unrelated to this project's.
 - Cleared the repository-wide lint failure so CI's `npm run lint` step passes. Applied Biome's formatter and import organisation, removed unused `execFileSync`/`kiroToolDescription` imports, and rewrote `src/event-stream.ts`'s waiter draining and async iterator to drop four non-null assertions and two `any` casts without changing behaviour.
 

@@ -6,7 +6,7 @@ Self-contained: it bundles its own runtime dependencies and has no dependency on
 
 ## Requirements
 
-- **OMP** ≥ 17.0.9 (tested against 17.1.3)
+- **OMP** ≥ 17.0.9 (tested against 17.1.4)
 - **Kiro CLI** (recommended for credential reuse) — [install guide](https://kiro.dev/docs/cli/)
 
 ## Install
