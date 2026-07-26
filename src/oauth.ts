@@ -42,9 +42,7 @@ export interface KiroCredentials extends OAuthCredentials {
  * runtime shape rather than casting an opaque object, so missing fields fail
  * loudly instead of producing a silently-incomplete credential.
  */
-export function getKiroCredentialsFromOptions(
-  options: unknown,
-): KiroCredentials | undefined {
+export function getKiroCredentialsFromOptions(options: unknown): KiroCredentials | undefined {
   if (!options || typeof options !== "object" || !("credentials" in options)) {
     return undefined;
   }
@@ -57,15 +55,12 @@ export function getKiroCredentialsFromOptions(
     refresh: typeof c.refresh === "string" ? c.refresh : "",
     expires: typeof c.expires === "number" ? c.expires : 0,
     region: typeof c.region === "string" ? c.region : "us-east-1",
-    authMethod: (c.authMethod === "idc" || c.authMethod === "desktop" ? c.authMethod : "idc") as
-      | "idc"
-      | "desktop",
+    authMethod: (c.authMethod === "idc" || c.authMethod === "desktop" ? c.authMethod : "idc") as "idc" | "desktop",
     clientId: typeof c.clientId === "string" ? c.clientId : "",
     clientSecret: typeof c.clientSecret === "string" ? c.clientSecret : "",
     profileArn: typeof c.profileArn === "string" ? c.profileArn : undefined,
   };
 }
-
 
 /**
  * Login to Kiro using the specified method.
@@ -262,14 +257,20 @@ async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OA
           headers: { "Content-Type": "application/json", "User-Agent": "pi-cli" },
           body: JSON.stringify({ refreshToken }),
         });
-        if (!response.ok) { lastError = new Error(`Desktop token refresh failed: ${response.status}`); continue; }
+        if (!response.ok) {
+          lastError = new Error(`Desktop token refresh failed: ${response.status}`);
+          continue;
+        }
         const data = (await response.json()) as {
           accessToken: string;
           refreshToken?: string;
           expiresIn: number;
           profileArn?: string;
         };
-        if (!data.accessToken) { lastError = new Error("Desktop token refresh: missing accessToken"); continue; }
+        if (!data.accessToken) {
+          lastError = new Error("Desktop token refresh: missing accessToken");
+          continue;
+        }
         return {
           refresh: `${data.refreshToken || refreshToken}|desktop`,
           access: data.accessToken,
@@ -313,9 +314,15 @@ async function refreshKiroTokenDirect(credentials: OAuthCredentials): Promise<OA
         headers: { "Content-Type": "application/json", "User-Agent": "pi-cli" },
         body: JSON.stringify({ clientId, clientSecret, refreshToken, grantType: "refresh_token" }),
       });
-      if (!response.ok) { lastError = new Error(`Token refresh failed: ${response.status}`); continue; }
+      if (!response.ok) {
+        lastError = new Error(`Token refresh failed: ${response.status}`);
+        continue;
+      }
       const data = (await response.json()) as { accessToken: string; refreshToken: string; expiresIn: number };
-      if (!data.accessToken) { lastError = new Error("Token refresh: missing accessToken"); continue; }
+      if (!data.accessToken) {
+        lastError = new Error("Token refresh: missing accessToken");
+        continue;
+      }
       return {
         refresh: `${data.refreshToken || refreshToken}|${clientId}|${clientSecret}|idc`,
         access: data.accessToken,

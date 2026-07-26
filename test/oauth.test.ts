@@ -83,10 +83,7 @@ describe("Feature 3: OAuth — Token Refresh", () => {
 
     it("throws on desktop token refresh with missing accessToken (all regions)", async () => {
       // Persistent response with no accessToken so every probed region fails
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ expiresIn: 3600 }) }),
-      );
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve({ expiresIn: 3600 }) }));
       await expect(
         refreshKiroToken({
           refresh: "desk_rt|desktop",
@@ -132,7 +129,10 @@ describe("Feature 3: OAuth — Token Refresh", () => {
       const mockFetch = vi.fn().mockImplementation(async (_url: string, options: RequestInit) => {
         const body = JSON.parse(options.body as string);
         if (body.refreshToken === "cli_rt") {
-          return { ok: true, json: () => Promise.resolve({ accessToken: "new_at", refreshToken: "new_rt", expiresIn: 3600 }) };
+          return {
+            ok: true,
+            json: () => Promise.resolve({ accessToken: "new_at", refreshToken: "new_rt", expiresIn: 3600 }),
+          };
         }
         return { ok: false, status: 401 };
       });
@@ -193,7 +193,8 @@ describe("Feature 3: OAuth — Token Refresh", () => {
     });
 
     it("tries next region when first IDC candidate fails", async () => {
-      const mockFetch = vi.fn()
+      const mockFetch = vi
+        .fn()
         .mockResolvedValueOnce({ ok: false, status: 400 }) // first candidate fails
         .mockResolvedValue({
           ok: true,
@@ -214,10 +215,13 @@ describe("Feature 3: OAuth — Token Refresh", () => {
     });
 
     it("refreshed IDC credential carries the successful region", async () => {
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({ accessToken: "at", refreshToken: "rt", expiresIn: 3600 }),
-      }));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: () => Promise.resolve({ accessToken: "at", refreshToken: "rt", expiresIn: 3600 }),
+        }),
+      );
 
       const creds = await refreshKiroToken({
         refresh: "old_rt|cid|csec|idc",

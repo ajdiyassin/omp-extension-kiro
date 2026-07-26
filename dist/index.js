@@ -135,6 +135,13 @@ function getNodeSqlite() {
     return void 0;
   }
 }
+function getBunSqlite() {
+  try {
+    return require2("bun:sqlite");
+  } catch {
+    return void 0;
+  }
+}
 function queryKiroCliDb(dbPath, sql) {
   const sqlite = getNodeSqlite();
   if (sqlite) {
@@ -142,6 +149,20 @@ function queryKiroCliDb(dbPath, sql) {
       const db = new sqlite.DatabaseSync(dbPath, { readOnly: true });
       try {
         const rows = db.prepare(sql).all();
+        const result = JSON.stringify(rows);
+        return result === "[]" ? void 0 : result;
+      } finally {
+        db.close();
+      }
+    } catch {
+    }
+  }
+  const bunSqlite = getBunSqlite();
+  if (bunSqlite) {
+    try {
+      const db = new bunSqlite.Database(dbPath, { readonly: true });
+      try {
+        const rows = db.query(sql).all();
         const result = JSON.stringify(rows);
         return result === "[]" ? void 0 : result;
       } finally {
@@ -166,6 +187,19 @@ function execKiroCliDb(dbPath, sql) {
   if (sqlite) {
     try {
       const db = new sqlite.DatabaseSync(dbPath);
+      try {
+        db.exec(sql);
+        return true;
+      } finally {
+        db.close();
+      }
+    } catch {
+    }
+  }
+  const bunSqlite = getBunSqlite();
+  if (bunSqlite) {
+    try {
+      const db = new bunSqlite.Database(dbPath);
       try {
         db.exec(sql);
         return true;
@@ -1048,7 +1082,7 @@ function getKiroIdeCredentialsAllowExpired() {
 }
 
 // src/login.ts
-import { execFileSync as execFileSync2 } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 // src/login-ui.ts
 async function showLoginUI() {
@@ -1207,7 +1241,7 @@ async function loginViaKiroCli(callbacks, provider) {
   const { getKiroCliCredentials: getKiroCliCredentials2, getKiroCliSocialToken: getKiroCliSocialToken2 } = await Promise.resolve().then(() => (init_kiro_cli(), kiro_cli_exports));
   getProgress(callbacks)?.(`Initiating ${provider} login via kiro-cli...`);
   try {
-    execFileSync2("kiro-cli", ["login", "--license", "free"], {
+    execFileSync("kiro-cli", ["login", "--license", "free"], {
       timeout: 12e4,
       stdio: "inherit"
     });
@@ -1855,8 +1889,8 @@ var EventStream = class {
       this.resultSettled = true;
       this.rejectFinalResult(new Error("Stream ended without a final result"));
     }
-    while (this.waiting.length > 0) {
-      this.waiting.shift().resolve({ value: void 0, done: true });
+    for (const waiter of this.waiting.splice(0)) {
+      waiter.resolve({ value: void 0, done: true });
     }
   }
   fail(err) {
@@ -1866,14 +1900,15 @@ var EventStream = class {
     this.#error = err;
     this.resultSettled = true;
     this.rejectFinalResult(err);
-    while (this.waiting.length > 0) {
-      this.waiting.shift().reject(err);
+    for (const waiter of this.waiting.splice(0)) {
+      waiter.reject(err);
     }
   }
   async *[Symbol.asyncIterator]() {
     while (true) {
-      if (this.queue.length > 0) {
-        yield this.queue.shift();
+      const next = this.queue.shift();
+      if (next !== void 0) {
+        yield next;
       } else if (this.#failed) {
         throw this.#error;
       } else if (this.done) {
@@ -1920,8 +1955,8 @@ var LocalAssistantMessageEventStream = class extends EventStream {
       this.resultSettled = true;
       this.rejectFinalResult(new Error("Stream ended without a final result"));
     }
-    while (this.waiting.length > 0) {
-      this.waiting.shift().resolve({ value: void 0, done: true });
+    for (const waiter of this.waiting.splice(0)) {
+      waiter.resolve({ value: void 0, done: true });
     }
   }
 };

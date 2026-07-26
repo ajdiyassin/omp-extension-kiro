@@ -2,7 +2,7 @@
 
 OMP-native provider extension for the [Kiro](https://kiro.dev) API. Models and capabilities are discovered live from Kiro's `ListAvailableModels` endpoint, including Claude adaptive thinking and GPT reasoning controls when advertised by each model's schema.
 
-Fork of [mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro), converted to a self-contained OMP extension with no runtime dependency on `@earendil-works/*` or OMP TUI internals.
+Self-contained: it bundles its own runtime dependencies and has no dependency on `@earendil-works/*` packages or OMP TUI internals.
 
 ## Requirements
 
@@ -232,24 +232,20 @@ Remove-Item "$env:USERPROFILE\.omp\plugins\node_modules\omp-provider-kiro" -Recu
 omp plugin install .
 ```
 
-### Remove the old upstream plugin
+### Migrating from pi-provider-kiro
+
+If you previously used the `pi-provider-kiro` plugin, remove it so the two do not both register a Kiro provider:
 
 ```powershell
 omp plugin uninstall pi-provider-kiro
 Remove-Item "$env:USERPROFILE\.omp\plugins\node_modules\pi-provider-kiro" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
-## Differences from upstream
-
-| Feature | upstream `pi-provider-kiro` | this extension |
-|---|---|---|
-| Models | Maintained catalog | Live Kiro discovery with OMP cache |
-| Package imports | `@earendil-works/*` externalized | Self-contained bundle |
-| Login UI | Custom TUI | OMP prompt fallback |
-| Windows DB path | `%APPDATA%` only | `%LOCALAPPDATA%` + `%APPDATA%` |
-| Build output | Relies on PI runtime resolution | Fully bundled ESM |
-| OMP manifest | `pi.extensions` only | `omp.extensions` + `pi.extensions` |
-
 ## License
 
-MIT
+MIT.
+
+Portions of this project originate from
+[mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro),
+also MIT licensed. This repository is now standalone and does not track that
+project.

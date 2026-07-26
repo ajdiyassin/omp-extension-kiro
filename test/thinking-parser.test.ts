@@ -1,6 +1,6 @@
 import type { AssistantMessage, AssistantMessageEvent } from "@oh-my-pi/pi-ai";
-import { createAssistantMessageEventStream } from "../src/event-stream.js";
 import { describe, expect, it } from "vitest";
+import { createAssistantMessageEventStream } from "../src/event-stream.js";
 import { ThinkingTagParser } from "../src/thinking-parser.js";
 
 function makeOutput(): AssistantMessage {

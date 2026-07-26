@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getKiroApiKeyCredentials, getKiroCliCredentials, getKiroCliDbPath, TOKEN_KEY_BY_AUTH_METHOD } from "../src/kiro-cli.js";
-
-
+import {
+  getKiroApiKeyCredentials,
+  getKiroCliCredentials,
+  getKiroCliDbPath,
+  TOKEN_KEY_BY_AUTH_METHOD,
+} from "../src/kiro-cli.js";
 
 describe("Feature 4: kiro-cli Credential Fallback", () => {
   describe("getKiroCliDbPath", () => {

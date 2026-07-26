@@ -1,45 +1,80 @@
 # Release Process
 
-This project publishes to npm as [`pi-provider-kiro`](https://www.npmjs.com/package/pi-provider-kiro). Releases are triggered by GitHub Releases and automated via GitHub Actions.
+This project lives at
+[ajdiyassin/omp-extension-kiro](https://github.com/ajdiyassin/omp-extension-kiro)
+and the package is named `omp-provider-kiro`.
+
+Most users install straight from GitHub, which needs no registry at all:
+
+```powershell
+omp plugin install github:ajdiyassin/omp-extension-kiro
+```
+
+`dist/index.js` is committed, so a GitHub install works without a build step.
+
+## npm publishing
+
+`omp-provider-kiro` has **not been published to npm yet** — the name is
+currently unclaimed. [`publish.yml`](.github/workflows/publish.yml) runs
+`npm publish --provenance --access public` when a GitHub Release is published,
+so the first release you publish will also create the npm package.
+
+If you do not intend to distribute via npm, delete that workflow rather than
+leaving a publish step that never runs successfully.
 
 ## Versioning
 
 Follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html):
 
-- **patch** (0.4.x) — bug fixes
+- **patch** (0.3.x) — bug fixes
 - **minor** (0.x.0) — new features, backward-compatible
 - **major** (x.0.0) — breaking changes
+
+Version numbers are this project's own. The `## Pre-fork history` section of
+`CHANGELOG.md` records releases made under the `pi-provider-kiro` name before
+this extension became standalone; those numbers run higher than the current
+version and are unrelated to it.
 
 ## Steps
 
 ### 1. Prepare the release commit
 
-Update the version in `package.json` and `package-lock.json`:
+Bump the version in `package.json` and `package-lock.json`:
 
-```bash
+```powershell
 npm version <patch|minor|major> --no-git-tag-version
 ```
 
-Update `CHANGELOG.md` with a new section following [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format. Add a compare link at the bottom of the file.
+Rebuild the committed bundle. CI fails the build if `dist/index.js` does not
+match the committed sources, so this is not optional whenever `src/` changed:
+
+```powershell
+npm run build
+```
+
+Move the `## [Unreleased]` entries in `CHANGELOG.md` under a new
+`## [<VERSION>] - <YYYY-MM-DD>` heading, following
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Commit:
 
-```bash
-git add package.json package-lock.json CHANGELOG.md
+```powershell
+git add package.json package-lock.json bun.lock CHANGELOG.md dist/index.js
 git commit -m "chore(release): v<VERSION>"
 git push
 ```
 
 ### 2. Tag and push
 
-```bash
+```powershell
 git tag v<VERSION>
 git push origin v<VERSION>
 ```
 
 ### 3. Create a GitHub Release
 
-Go to [Releases](https://github.com/mikeyobrien/pi-provider-kiro/releases) → **Draft a new release**:
+Go to [Releases](https://github.com/ajdiyassin/omp-extension-kiro/releases) →
+**Draft a new release**:
 
 - Select the `v<VERSION>` tag
 - Title: `v<VERSION>`
@@ -48,27 +83,25 @@ Go to [Releases](https://github.com/mikeyobrien/pi-provider-kiro/releases) → *
 
 ### 4. Automated publish
 
-The [`publish.yml`](.github/workflows/publish.yml) workflow runs on `release: [published]` events. It:
-
-1. Checks out the tagged commit
-2. Runs `npm ci`
-3. Runs type checking (`npm run check`) and tests (`npm test`)
-4. Publishes to npm with `--provenance --access public`
-
-No manual npm publish is needed.
+The publish workflow runs on `release: [published]` events. It checks out the
+tagged commit, runs `npm ci`, type checking, and tests, then publishes to npm
+with provenance. No manual `npm publish` is needed.
 
 ## CI
 
-The [`ci.yml`](.github/workflows/ci.yml) workflow runs on every push and PR to `main`:
+[`ci.yml`](.github/workflows/ci.yml) runs on every push and PR to `main`:
 
 - Type checking (`npm run check`)
 - Linting (`npm run lint`)
 - Tests (`npm test`)
+- Build (`npm run build`)
+- A stale-bundle gate (`git diff --exit-code -- dist/index.js`)
 
 ## Pre-release checklist
 
-- [ ] All tests pass (`npm test`)
+- [ ] Tests pass (`npm test`)
 - [ ] Type check passes (`npm run check`)
 - [ ] Lint passes (`npm run lint`)
-- [ ] `CHANGELOG.md` updated
+- [ ] `dist/index.js` rebuilt and committed if `src/` changed
+- [ ] `CHANGELOG.md` updated, with `[Unreleased]` emptied into the new version
 - [ ] Version bumped in `package.json` / `package-lock.json`

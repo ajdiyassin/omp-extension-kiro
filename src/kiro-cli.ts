@@ -1,13 +1,14 @@
 // ABOUTME: Reads and writes credentials from the kiro-cli SQLite database.
 // ABOUTME: Provides fallback auth and write-back to keep kiro-cli in sync after refresh.
 
-import { execFileSync, execSync } from "node:child_process";
+import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import type { KiroAuthMethod, KiroCredentials } from "./oauth.js";
+import type * as nodeSqlite from "node:sqlite";
 import { extractRegionFromProfileArn } from "./models.js";
+import type { KiroAuthMethod, KiroCredentials } from "./oauth.js";
 
 const require = createRequire(import.meta.url);
 
@@ -26,9 +27,27 @@ export function getKiroCliDbPath(): string | undefined {
   return existsSync(dbPath) ? dbPath : undefined;
 }
 
-function getNodeSqlite(): typeof import("node:sqlite") | undefined {
+interface BunSqliteDatabase {
+  query(sql: string): { all(): unknown[] };
+  exec(sql: string): void;
+  close(): void;
+}
+
+interface BunSqliteModule {
+  Database: new (path: string, options?: { readonly?: boolean }) => BunSqliteDatabase;
+}
+
+function getNodeSqlite(): typeof nodeSqlite | undefined {
   try {
-    return require("node:sqlite") as typeof import("node:sqlite");
+    return require("node:sqlite") as typeof nodeSqlite;
+  } catch {
+    return undefined;
+  }
+}
+
+function getBunSqlite(): BunSqliteModule | undefined {
+  try {
+    return require("bun:sqlite") as BunSqliteModule;
   } catch {
     return undefined;
   }
@@ -41,6 +60,22 @@ function queryKiroCliDb(dbPath: string, sql: string): string | undefined {
       const db = new sqlite.DatabaseSync(dbPath, { readOnly: true });
       try {
         const rows = db.prepare(sql).all() as unknown[];
+        const result = JSON.stringify(rows);
+        return result === "[]" ? undefined : result;
+      } finally {
+        db.close();
+      }
+    } catch {
+      // Fall through to Bun SQLite, then sqlite3 CLI
+    }
+  }
+
+  const bunSqlite = getBunSqlite();
+  if (bunSqlite) {
+    try {
+      const db = new bunSqlite.Database(dbPath, { readonly: true });
+      try {
+        const rows = db.query(sql).all();
         const result = JSON.stringify(rows);
         return result === "[]" ? undefined : result;
       } finally {
@@ -68,6 +103,21 @@ function execKiroCliDb(dbPath: string, sql: string): boolean {
   if (sqlite) {
     try {
       const db = new sqlite.DatabaseSync(dbPath);
+      try {
+        db.exec(sql);
+        return true;
+      } finally {
+        db.close();
+      }
+    } catch {
+      // Fall through to Bun SQLite, then sqlite3 CLI
+    }
+  }
+
+  const bunSqlite = getBunSqlite();
+  if (bunSqlite) {
+    try {
+      const db = new bunSqlite.Database(dbPath);
       try {
         db.exec(sql);
         return true;
@@ -151,7 +201,6 @@ export function getKiroApiKeyCredentials(): KiroCredentials | undefined {
     clientSecret: "",
   };
 }
-
 
 function tryKiroCliToken(
   dbPath: string,
@@ -282,5 +331,3 @@ export function saveKiroCliCredentials(creds: KiroCredentials): void {
     } catch {}
   }
 }
-
-

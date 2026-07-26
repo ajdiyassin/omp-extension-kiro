@@ -9,9 +9,9 @@ import {
   stripHistoryImages,
   truncateHistory,
 } from "../src/history.js";
-import { buildHistory } from "../src/transform.js";
 import { createKiroToolUseIdNormalizer, KIRO_TOOL_USE_ID_PATTERN } from "../src/tool-id.js";
 import type { KiroHistoryEntry, KiroToolResult, KiroToolSpec, KiroToolUse } from "../src/transform.js";
+import { buildHistory } from "../src/transform.js";
 
 const userEntry = (content: string, toolResults?: KiroToolResult[]): KiroHistoryEntry => ({
   userInputMessage: {
@@ -312,7 +312,6 @@ describe("Feature 6: History Management", () => {
   });
 });
 
-
 describe("synthetic tool-call injection inherits normalized IDs", () => {
   it("Test 9: an orphan foreign tool result and its synthetic call share the same normalized ID", () => {
     const normalizer = createKiroToolUseIdNormalizer();
@@ -325,11 +324,25 @@ describe("synthetic tool-call injection inherits normalized IDs", () => {
         api: "kiro-api",
         provider: "kiro",
         model: "test",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
         stopReason: "toolUse",
         timestamp: 0,
       },
-      { role: "toolResult", toolCallId: "functions.eval:17", toolName: "eval", content: [{ type: "text", text: "r" }], isError: false, timestamp: 0 },
+      {
+        role: "toolResult",
+        toolCallId: "functions.eval:17",
+        toolName: "eval",
+        content: [{ type: "text", text: "r" }],
+        isError: false,
+        timestamp: 0,
+      },
       { role: "user", content: "next", timestamp: 0 },
     ] as never[];
 

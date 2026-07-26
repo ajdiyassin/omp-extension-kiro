@@ -1,12 +1,7 @@
 // ABOUTME: Stateful parser for thinking tags in streaming content.
 // ABOUTME: Separates thinking blocks from text, supporting multiple tag variants.
 
-import type {
-  AssistantMessage,
-  AssistantMessageEventStream,
-  TextContent,
-  ThinkingContent,
-} from "@oh-my-pi/pi-ai";
+import type { AssistantMessage, AssistantMessageEventStream, TextContent, ThinkingContent } from "@oh-my-pi/pi-ai";
 
 export const THINKING_START_TAG = "<thinking>";
 export const THINKING_END_TAG = "</thinking>";
@@ -144,7 +139,6 @@ export class ThinkingTagParser {
     }
     this.textBuffer = "";
   }
-
 
   getTextBlockIndex(): number | null {
     return this.textBlockIndex ?? this.lastTextBlockIndex;

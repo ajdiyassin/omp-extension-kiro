@@ -1,19 +1,25 @@
-import type { AssistantMessage, Message, Tool, ToolResultMessage, UserMessage } from "@oh-my-pi/pi-ai";
-import type { DeveloperMessage, ImageContent, Tool } from "@oh-my-pi/pi-ai";
+import type {
+  AssistantMessage,
+  DeveloperMessage,
+  ImageContent,
+  Message,
+  Tool,
+  ToolResultMessage,
+  UserMessage,
+} from "@oh-my-pi/pi-ai";
 import { describe, expect, it } from "vitest";
+import { createKiroToolUseIdNormalizer, KIRO_TOOL_USE_ID_PATTERN } from "../src/tool-id.js";
 import {
   buildHistory,
   convertImagesToKiro,
   convertToolsToKiro,
   getContentText,
   getEnvState,
-  kiroToolDescription,
   normalizeMessages,
   sanitizeSurrogates,
   TOOL_RESULT_LIMIT,
   truncate,
 } from "../src/transform.js";
-import { createKiroToolUseIdNormalizer, KIRO_TOOL_USE_ID_PATTERN } from "../src/tool-id.js";
 
 const ts = Date.now();
 const usage = {
@@ -255,7 +261,6 @@ describe("Feature 5: Message Transformation", () => {
   });
 });
 
-
 describe("getEnvState", () => {
   it("emits a Kiro-valid operatingSystem (never the raw process.platform)", () => {
     // Regression: sending "win32" gets the whole request rejected with 400
@@ -273,14 +278,15 @@ describe("getEnvState", () => {
   });
 });
 
-
 describe("buildHistory tool-use ID normalization", () => {
   it("Test 5: a foreign call and its result serialize to the same valid normalized ID", () => {
     const normalizer = createKiroToolUseIdNormalizer();
     const msgs: Message[] = [
       user("go"),
       assistant("", {
-        content: [{ type: "toolCall", id: "functions.search:6", name: "search", arguments: { query: "test" } } as never],
+        content: [
+          { type: "toolCall", id: "functions.search:6", name: "search", arguments: { query: "test" } } as never,
+        ],
       }),
       toolResult("functions.search:6", "result"),
       user("continue"),
@@ -436,7 +442,6 @@ describe("convertToolsToKiro — v16 schema compatibility", () => {
   });
 });
 
-
 describe("convertToolsToKiro — Kiro-safe tool descriptions (OMP 16.1.x)", () => {
   it("empty description gets a minimal fallback", () => {
     const out = convertToolsToKiro([
@@ -480,8 +485,16 @@ describe("convertToolsToKiro — Kiro-safe tool descriptions (OMP 16.1.x)", () =
 
   it("full tool array: every serialized Kiro tool has a non-empty description, schemas stay JSON Schema", () => {
     const tools = [
-      { name: "read", description: "Read a file.", parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
-      { name: "search", description: "", parameters: { type: "object", properties: { q: { type: "string" } }, required: ["q"] } },
+      {
+        name: "read",
+        description: "Read a file.",
+        parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+      },
+      {
+        name: "search",
+        description: "",
+        parameters: { type: "object", properties: { q: { type: "string" } }, required: ["q"] },
+      },
       { name: "eval", description: "   ", parameters: { type: "object", properties: {} } },
       {
         name: "run",

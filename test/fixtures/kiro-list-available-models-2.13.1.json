@@ -15,10 +15,7 @@
     {
       "modelId": "auto",
       "modelName": "auto",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 1000000,
         "maxOutputTokens": 64000
@@ -35,10 +32,7 @@
     {
       "modelId": "claude-sonnet-5",
       "modelName": "claude-sonnet-5",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 1000000,
         "maxOutputTokens": 64000
@@ -50,23 +44,15 @@
         "properties": {
           "thinking": {
             "type": "object",
-            "required": [
-              "type"
-            ],
+            "required": ["type"],
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "adaptive",
-                  "disabled"
-                ]
+                "enum": ["adaptive", "disabled"]
               },
               "display": {
                 "type": "string",
-                "enum": [
-                  "summarized",
-                  "omitted"
-                ]
+                "enum": ["summarized", "omitted"]
               }
             }
           },
@@ -76,13 +62,7 @@
               "effort": {
                 "type": "string",
                 "default": "high",
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
+                "enum": ["low", "medium", "high", "xhigh", "max"]
               }
             }
           },
@@ -104,10 +84,7 @@
     {
       "modelId": "claude-opus-4.8",
       "modelName": "claude-opus-4.8",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 1000000,
         "maxOutputTokens": 128000
@@ -119,23 +96,15 @@
         "properties": {
           "thinking": {
             "type": "object",
-            "required": [
-              "type"
-            ],
+            "required": ["type"],
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "adaptive",
-                  "disabled"
-                ]
+                "enum": ["adaptive", "disabled"]
               },
               "display": {
                 "type": "string",
-                "enum": [
-                  "summarized",
-                  "omitted"
-                ]
+                "enum": ["summarized", "omitted"]
               }
             }
           },
@@ -145,13 +114,7 @@
               "effort": {
                 "type": "string",
                 "default": "high",
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
+                "enum": ["low", "medium", "high", "xhigh", "max"]
               }
             }
           },
@@ -173,10 +136,7 @@
     {
       "modelId": "gpt-5.6-sol",
       "modelName": "gpt-5.6-sol",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 272000,
         "maxOutputTokens": 128000
@@ -192,22 +152,12 @@
               "mode": {
                 "type": "string",
                 "default": "standard",
-                "enum": [
-                  "standard",
-                  "pro"
-                ]
+                "enum": ["standard", "pro"]
               },
               "effort": {
                 "type": "string",
                 "default": "high",
-                "enum": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
+                "enum": ["none", "low", "medium", "high", "xhigh", "max"]
               }
             }
           }
@@ -224,10 +174,7 @@
     {
       "modelId": "gpt-5.6-terra",
       "modelName": "gpt-5.6-terra",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 272000,
         "maxOutputTokens": 128000
@@ -243,22 +190,12 @@
               "mode": {
                 "type": "string",
                 "default": "standard",
-                "enum": [
-                  "standard",
-                  "pro"
-                ]
+                "enum": ["standard", "pro"]
               },
               "effort": {
                 "type": "string",
                 "default": "high",
-                "enum": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
+                "enum": ["none", "low", "medium", "high", "xhigh", "max"]
               }
             }
           }
@@ -275,10 +212,7 @@
     {
       "modelId": "gpt-5.6-luna",
       "modelName": "gpt-5.6-luna",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 272000,
         "maxOutputTokens": 128000
@@ -294,22 +228,12 @@
               "mode": {
                 "type": "string",
                 "default": "standard",
-                "enum": [
-                  "standard",
-                  "pro"
-                ]
+                "enum": ["standard", "pro"]
               },
               "effort": {
                 "type": "string",
                 "default": "high",
-                "enum": [
-                  "none",
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
+                "enum": ["none", "low", "medium", "high", "xhigh", "max"]
               }
             }
           }
@@ -326,10 +250,7 @@
     {
       "modelId": "claude-opus-4.7",
       "modelName": "claude-opus-4.7",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 1000000,
         "maxOutputTokens": 128000
@@ -341,23 +262,15 @@
         "properties": {
           "thinking": {
             "type": "object",
-            "required": [
-              "type"
-            ],
+            "required": ["type"],
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "adaptive",
-                  "disabled"
-                ]
+                "enum": ["adaptive", "disabled"]
               },
               "display": {
                 "type": "string",
-                "enum": [
-                  "summarized",
-                  "omitted"
-                ]
+                "enum": ["summarized", "omitted"]
               }
             }
           },
@@ -367,13 +280,7 @@
               "effort": {
                 "type": "string",
                 "default": "xhigh",
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "xhigh",
-                  "max"
-                ]
+                "enum": ["low", "medium", "high", "xhigh", "max"]
               }
             }
           },
@@ -395,10 +302,7 @@
     {
       "modelId": "claude-opus-4.6",
       "modelName": "claude-opus-4.6",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 1000000,
         "maxOutputTokens": 64000
@@ -410,23 +314,15 @@
         "properties": {
           "thinking": {
             "type": "object",
-            "required": [
-              "type"
-            ],
+            "required": ["type"],
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "adaptive",
-                  "disabled"
-                ]
+                "enum": ["adaptive", "disabled"]
               },
               "display": {
                 "type": "string",
-                "enum": [
-                  "summarized",
-                  "omitted"
-                ]
+                "enum": ["summarized", "omitted"]
               }
             }
           },
@@ -436,12 +332,7 @@
               "effort": {
                 "type": "string",
                 "default": "high",
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "max"
-                ]
+                "enum": ["low", "medium", "high", "max"]
               }
             }
           },
@@ -463,10 +354,7 @@
     {
       "modelId": "claude-sonnet-4.6",
       "modelName": "claude-sonnet-4.6",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 1000000,
         "maxOutputTokens": 64000
@@ -478,23 +366,15 @@
         "properties": {
           "thinking": {
             "type": "object",
-            "required": [
-              "type"
-            ],
+            "required": ["type"],
             "properties": {
               "type": {
                 "type": "string",
-                "enum": [
-                  "adaptive",
-                  "disabled"
-                ]
+                "enum": ["adaptive", "disabled"]
               },
               "display": {
                 "type": "string",
-                "enum": [
-                  "summarized",
-                  "omitted"
-                ]
+                "enum": ["summarized", "omitted"]
               }
             }
           },
@@ -504,12 +384,7 @@
               "effort": {
                 "type": "string",
                 "default": "high",
-                "enum": [
-                  "low",
-                  "medium",
-                  "high",
-                  "max"
-                ]
+                "enum": ["low", "medium", "high", "max"]
               }
             }
           },
@@ -531,10 +406,7 @@
     {
       "modelId": "claude-opus-4.5",
       "modelName": "claude-opus-4.5",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 200000,
         "maxOutputTokens": 64000
@@ -551,10 +423,7 @@
     {
       "modelId": "claude-sonnet-4.5",
       "modelName": "claude-sonnet-4.5",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 200000,
         "maxOutputTokens": 64000
@@ -571,10 +440,7 @@
     {
       "modelId": "claude-sonnet-4",
       "modelName": "claude-sonnet-4",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 200000,
         "maxOutputTokens": 64000
@@ -591,10 +457,7 @@
     {
       "modelId": "claude-haiku-4.5",
       "modelName": "claude-haiku-4.5",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 200000,
         "maxOutputTokens": 64000
@@ -611,10 +474,7 @@
     {
       "modelId": "deepseek-3.2",
       "modelName": "deepseek-3.2",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 164000,
         "maxOutputTokens": 64000
@@ -629,9 +489,7 @@
     {
       "modelId": "minimax-m2.5",
       "modelName": "minimax-m2.5",
-      "supportedInputTypes": [
-        "TEXT"
-      ],
+      "supportedInputTypes": ["TEXT"],
       "tokenLimits": {
         "maxInputTokens": 196000,
         "maxOutputTokens": 64000
@@ -646,10 +504,7 @@
     {
       "modelId": "minimax-m2.1",
       "modelName": "minimax-m2.1",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 196000,
         "maxOutputTokens": 64000
@@ -664,9 +519,7 @@
     {
       "modelId": "glm-5",
       "modelName": "glm-5",
-      "supportedInputTypes": [
-        "TEXT"
-      ],
+      "supportedInputTypes": ["TEXT"],
       "tokenLimits": {
         "maxInputTokens": 200000,
         "maxOutputTokens": 64000
@@ -681,10 +534,7 @@
     {
       "modelId": "qwen3-coder-next",
       "modelName": "qwen3-coder-next",
-      "supportedInputTypes": [
-        "TEXT",
-        "IMAGE"
-      ],
+      "supportedInputTypes": ["TEXT", "IMAGE"],
       "tokenLimits": {
         "maxInputTokens": 256000,
         "maxOutputTokens": 64000

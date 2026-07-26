@@ -2,7 +2,7 @@ import type { AssistantMessage, AssistantMessageEvent, AssistantMessageEventStre
 
 class EventStream<T, R = T> implements AsyncIterable<T> {
   queue: T[] = [];
-  waiting: Array<{ resolve: (value: IteratorResult<T>) => void; reject: (err: unknown) => void }> = [];
+  waiting: Array<{ resolve: (value: IteratorResult<T, undefined>) => void; reject: (err: unknown) => void }> = [];
   done = false;
   resultSettled = false;
   #failed = false;
@@ -16,7 +16,10 @@ class EventStream<T, R = T> implements AsyncIterable<T> {
   constructor(isComplete: (event: T) => boolean, extractResult: (event: T) => R) {
     let resolveFn!: (value: R) => void;
     let rejectFn!: (err: unknown) => void;
-    const promise = new Promise<R>((res, rej) => { resolveFn = res; rejectFn = rej; });
+    const promise = new Promise<R>((res, rej) => {
+      resolveFn = res;
+      rejectFn = rej;
+    });
     promise.catch(() => {});
     this.finalResultPromise = promise;
     this.resolveFinalResult = resolveFn;
@@ -58,8 +61,8 @@ class EventStream<T, R = T> implements AsyncIterable<T> {
       this.resultSettled = true;
       this.rejectFinalResult(new Error("Stream ended without a final result"));
     }
-    while (this.waiting.length > 0) {
-      this.waiting.shift()!.resolve({ value: undefined as any, done: true });
+    for (const waiter of this.waiting.splice(0)) {
+      waiter.resolve({ value: undefined, done: true });
     }
   }
 
@@ -70,21 +73,22 @@ class EventStream<T, R = T> implements AsyncIterable<T> {
     this.#error = err;
     this.resultSettled = true;
     this.rejectFinalResult(err);
-    while (this.waiting.length > 0) {
-      this.waiting.shift()!.reject(err);
+    for (const waiter of this.waiting.splice(0)) {
+      waiter.reject(err);
     }
   }
 
   async *[Symbol.asyncIterator](): AsyncIterator<T> {
     while (true) {
-      if (this.queue.length > 0) {
-        yield this.queue.shift()!;
+      const next = this.queue.shift();
+      if (next !== undefined) {
+        yield next;
       } else if (this.#failed) {
         throw this.#error;
       } else if (this.done) {
         return;
       } else {
-        const result = await new Promise<IteratorResult<T>>((resolve, reject) =>
+        const result = await new Promise<IteratorResult<T, undefined>>((resolve, reject) =>
           this.waiting.push({ resolve, reject }),
         );
         if (result.done) return;
@@ -129,8 +133,8 @@ export class LocalAssistantMessageEventStream extends EventStream<AssistantMessa
       this.resultSettled = true;
       this.rejectFinalResult(new Error("Stream ended without a final result"));
     }
-    while (this.waiting.length > 0) {
-      this.waiting.shift()!.resolve({ value: undefined as any, done: true });
+    for (const waiter of this.waiting.splice(0)) {
+      waiter.resolve({ value: undefined, done: true });
     }
   }
 }

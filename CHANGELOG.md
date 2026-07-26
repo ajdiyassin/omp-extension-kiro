@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Upgraded the pinned `@oh-my-pi/pi-ai` and `@oh-my-pi/pi-coding-agent` dev dependencies from `17.0.9` to `17.1.3`. The minimum supported OMP version remains `17.0.9`. No source changes were required: 17.1.x introduced no breaking changes to the typed provider-extension API surface, and the extension type-checks and passes its full test suite unchanged against 17.1.3.
+- Documentation now describes this project as standalone. `README.md` no longer frames it as a fork, `RELEASE.md` points at this repository and records that the `omp-provider-kiro` npm package is not yet published, and prior `pi-provider-kiro` releases moved to a clearly separated `Pre-fork history` section whose version numbers are unrelated to this project's.
+- Cleared the repository-wide lint failure so CI's `npm run lint` step passes. Applied Biome's formatter and import organisation, removed unused `execFileSync`/`kiroToolDescription` imports, and rewrote `src/event-stream.ts`'s waiter draining and async iterator to drop four non-null assertions and two `any` casts without changing behaviour.
+
+### Fixed
+
+- Read the real Kiro CLI SQLite credential store when the extension runs under Bun without `node:sqlite` or an external `sqlite3` executable.
+
+---
+
+## Pre-fork history
+
+Everything below was released as `pi-provider-kiro` by
+[mikeyobrien/pi-provider-kiro](https://github.com/mikeyobrien/pi-provider-kiro)
+before this extension was rewritten as a standalone, self-contained OMP
+provider. Those version numbers belong to that package and are unrelated to the
+`omp-provider-kiro` versions above — in particular the `0.3.0` below is not this
+project's `0.3.0`. The entries are retained for provenance only; this repository
+no longer tracks or depends on that project.
 
 ## [0.8.0] - 2026-05-29
 
@@ -170,17 +188,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release: 17 models across 7 families, OAuth device code flow, kiro-cli SQLite credential fallback, streaming pipeline with thinking tag parser
 
-[Unreleased]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.6.1...v0.7.0
-[0.6.1]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.5.2...v0.6.0
-[0.5.2]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.5.1...v0.5.2
-[0.4.2]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.4.1...v0.4.2
-[0.4.1]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.4.0...v0.4.1
-[0.5.1]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.5.0...v0.5.1
-[0.5.0]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.4.5...v0.5.0
-[0.4.0]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.3.2...v0.4.0
-[0.3.0]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.2.2...v0.3.0
-[0.2.2]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/mikeyobrien/pi-provider-kiro/compare/v0.1.1...v0.2.1
-[0.1.1]: https://github.com/mikeyobrien/pi-provider-kiro/releases/tag/v0.1.1
+[Unreleased]: https://github.com/ajdiyassin/omp-extension-kiro/commits/main
