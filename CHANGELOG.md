@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+
+- Upgraded the pinned `@oh-my-pi/pi-ai` and `@oh-my-pi/pi-coding-agent` dev dependencies from `17.0.9` to `17.1.3`. The minimum supported OMP version remains `17.0.9`. No source changes were required: 17.1.x introduced no breaking changes to the typed provider-extension API surface, and the extension type-checks and passes its full test suite unchanged against 17.1.3.
 
 ## [0.8.0] - 2026-05-29
 

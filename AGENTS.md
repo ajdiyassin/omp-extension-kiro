@@ -6,7 +6,7 @@
 
 OMP provider extension for Kiro's management and streaming APIs. It uses OMP-native dynamic model discovery, supports API-key and OAuth/Kiro CLI authentication, converts live Kiro request schemas into canonical OMP thinking metadata, and bundles as a self-contained ESM extension.
 
-Minimum supported OMP version: **17.0.9**.
+Minimum supported OMP version: **17.0.9**. Validated against OMP **17.1.3**.
 
 ## Source map
 
